@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "Gerenciador de Locações",
+  "description": "Sistema Gerenciador de Locações para Imobiliária",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

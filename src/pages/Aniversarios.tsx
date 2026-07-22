@@ -1,41 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import { db } from '../store';
-import { Cadastro } from '../types';
-import { checkBirthday, getWhatsappLink } from '../utils/dates';
-import { Gift, MessageCircle, CheckCircle } from 'lucide-react';
+'use client'
+
+import React, { useEffect, useState } from 'react'
+import { db } from '../store'
+import { checkBirthday, getWhatsappLink } from '../utils/dates'
+import { Gift, MessageCircle, CheckCircle, CalendarDays } from 'lucide-react'
 
 interface BirthdayItem {
-  id: string;
-  nome: string;
-  tipo: 'Proprietário' | 'Inquilino';
-  telefone: string;
-  dataStr: string;
-  diasAte: number;
-  contrato: string;
+  id: string
+  nome: string
+  tipo: 'Proprietário' | 'Inquilino'
+  telefone: string
+  dataStr: string
+  diasAte: number
+  contrato: string
 }
 
 export default function Aniversarios() {
-  const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const currentYear = new Date().getFullYear().toString();
+  const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const currentYear = new Date().getFullYear().toString()
 
   const loadData = () => {
-    setLoading(true);
-    const cadastros = db.getCadastros();
-    const tarefas = db.getTarefas();
-    
-    // Find all done birthdays for this year
+    setLoading(true)
+    const cadastros = db.getCadastros()
+    const tarefas = db.getTarefas()
+
     const doneIds = new Set(
       tarefas
-        .filter(t => t.tipo === 'Aniversário' && t.referencia === currentYear)
-        .map(t => `${t.contrato}-${t.usuario}`) // We use 'usuario' to store 'Proprietário' or 'Inquilino' for simplicity
-    );
+        .filter((t) => t.tipo === 'Aniversário' && t.referencia === currentYear)
+        .map((t) => `${t.contrato}-${t.usuario}`),
+    )
 
-    const result: BirthdayItem[] = [];
+    const result: BirthdayItem[] = []
 
-    cadastros.forEach(c => {
-      // Check Proprietario
-      const propBday = checkBirthday(c.niverProp);
+    cadastros.forEach((c) => {
+      const propBday = checkBirthday(c.niverProp)
       if (propBday && !doneIds.has(`${c.contrato}-Proprietário`)) {
         result.push({
           id: `${c.id}-prop`,
@@ -45,11 +44,10 @@ export default function Aniversarios() {
           dataStr: propBday.dateStr,
           diasAte: propBday.daysAway,
           contrato: c.contrato,
-        });
+        })
       }
 
-      // Check Inquilino
-      const inqBday = checkBirthday(c.niverInq);
+      const inqBday = checkBirthday(c.niverInq)
       if (inqBday && !doneIds.has(`${c.contrato}-Inquilino`)) {
         result.push({
           id: `${c.id}-inq`,
@@ -59,92 +57,109 @@ export default function Aniversarios() {
           dataStr: inqBday.dateStr,
           diasAte: inqBday.daysAway,
           contrato: c.contrato,
-        });
+        })
       }
-    });
+    })
 
-    result.sort((a, b) => a.diasAte - b.diasAte);
-    setAniversariantes(result);
-    setLoading(false);
-  };
+    result.sort((a, b) => a.diasAte - b.diasAte)
+    setAniversariantes(result)
+    setLoading(false)
+  }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData()
+  }, [])
 
   const handleMarcarFeito = async (item: BirthdayItem) => {
     await db.saveTarefa({
       contrato: item.contrato,
       tipo: 'Aniversário',
-      usuario: item.tipo, // Storing who it was for
-      referencia: currentYear
-    });
-    loadData();
-  };
+      usuario: item.tipo,
+      referencia: currentYear,
+    })
+    loadData()
+  }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-      <div className="px-6 py-5 border-b border-gray-200 bg-gray-50">
-        <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-          <Gift className="w-5 h-5 text-blue-600" />
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border bg-muted/50 px-6 py-5">
+        <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+            <Gift className="h-4.5 w-4.5 text-secondary-foreground" />
+          </span>
           Aniversários Próximos
         </h2>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           Mostrando aniversariantes de hoje e dos próximos 3 dias.
         </p>
       </div>
 
-      <div className="p-0">
+      <div>
         {loading ? (
-          <div className="p-8 flex justify-center text-gray-400">Carregando...</div>
+          <div className="flex justify-center p-8 text-muted-foreground">Carregando...</div>
         ) : aniversariantes.length === 0 ? (
-          <div className="p-12 text-center text-gray-500 flex flex-col items-center">
-            <Gift className="w-12 h-12 text-gray-200 mb-3" />
-            <p>Nenhum aniversário nos próximos dias.</p>
+          <div className="flex flex-col items-center p-14 text-center text-muted-foreground">
+            <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+              <Gift className="h-7 w-7 text-muted-foreground/50" />
+            </span>
+            <p className="font-medium">Nenhum aniversário nos próximos dias.</p>
+            <p className="mt-1 text-sm">Os aniversariantes aparecerão aqui automaticamente.</p>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-border">
             {aniversariantes.map((item) => {
-              const text = `Olá ${item.nome}! A imobiliária deseja um Feliz Aniversário! 🎉`;
-              const isToday = item.diasAte === 0;
+              const text = `Olá ${item.nome}! A IMG Imóveis Mogi Guaçu deseja um Feliz Aniversário! 🎉`
+              const isToday = item.diasAte === 0
 
               return (
-                <li key={item.id} className="p-6 hover:bg-gray-50 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <li
+                  key={item.id}
+                  className="flex flex-col justify-between gap-4 p-6 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+                >
                   <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${isToday ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`}>
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span
+                        className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          isToday
+                            ? 'bg-warning text-warning-foreground'
+                            : 'bg-secondary text-secondary-foreground'
+                        }`}
+                      >
+                        <CalendarDays className="h-3 w-3" />
                         {item.dataStr}
                       </span>
-                      <span className="text-sm text-gray-500">Contrato: {item.contrato}</span>
+                      <span className="text-sm text-muted-foreground">
+                        Contrato: {item.contrato}
+                      </span>
                     </div>
-                    <p className="text-gray-900 font-medium">{item.nome}</p>
-                    <p className="text-sm text-gray-500">{item.tipo}</p>
+                    <p className="font-semibold text-foreground">{item.nome}</p>
+                    <p className="text-sm text-muted-foreground">{item.tipo}</p>
                   </div>
-                  
+
                   <div className="flex items-center gap-3">
                     <a
                       href={getWhatsappLink(item.telefone, text)}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded-lg text-sm font-medium transition-colors border border-green-200"
+                      className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:brightness-105"
                     >
-                      <MessageCircle className="w-4 h-4" />
+                      <MessageCircle className="h-4 w-4" />
                       WhatsApp
                     </a>
                     <button
                       onClick={() => handleMarcarFeito(item)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-600 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors border border-gray-300 shadow-sm"
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
                     >
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="h-4 w-4" />
                       Marcar Feito
                     </button>
                   </div>
                 </li>
-              );
+              )
             })}
           </ul>
         )}
       </div>
     </div>
-  );
+  )
 }

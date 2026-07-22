@@ -5,6 +5,7 @@ import { db } from '../store'
 import { checkBoletoWarning, getWhatsappLink } from '../utils/dates'
 import { FileText, MessageCircle, CheckCircle } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import { useToast } from '../components/ui/Toast'
 
 interface BoletoItem {
   id: string
@@ -12,14 +13,16 @@ interface BoletoItem {
   nomeInq: string
   nomeProp: string
   telefone: string
-  tipoAviso: '5_dias' | '1_dia'
+  tipoAviso: '5_dias' | '1_dia' | 'hoje'
   diaVencimento: number
+  isFeito: boolean
 }
 
 export default function Boletos() {
   const { cadastros, tarefas, refreshData } = useData()
   const [boletos, setBoletos] = useState<BoletoItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [tab, setTab] = useState<'pendentes' | 'concluidos'>('pendentes')
 
   // Formato: YYYY-MM
   const currentMonthRef = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
@@ -36,24 +39,25 @@ export default function Boletos() {
     cadastros.forEach((c) => {
       const aviso = checkBoletoWarning(c.diaVencimento)
       if (aviso) {
-        const tipoStr = aviso === '5_dias' ? 'Boleto 5 dias' : 'Boleto 1 dia'
-        if (!doneIds.has(`${c.contrato}-${tipoStr}`)) {
-          result.push({
-            id: c.id,
-            contrato: c.contrato,
-            nomeInq: c.nomeInq,
-            nomeProp: c.nomeProp,
-            telefone: c.telInq,
-            tipoAviso: aviso,
-            diaVencimento: c.diaVencimento,
-          })
-        }
+        const tipoStr = aviso === '5_dias' ? 'Boleto 5 dias' : aviso === '1_dia' ? 'Boleto 1 dia' : 'Boleto Hoje'
+        result.push({
+          id: c.id,
+          contrato: c.contrato,
+          nomeInq: c.nomeInq,
+          nomeProp: c.nomeProp,
+          telefone: c.telInq,
+          tipoAviso: aviso,
+          diaVencimento: c.diaVencimento,
+          isFeito: doneIds.has(`${c.contrato}-${tipoStr}`),
+        })
       }
     })
 
     setBoletos(result)
   }
 
+  const { addToast } = useToast()
+  
   useEffect(() => {
     if (cadastros && tarefas) {
       loadData()
@@ -61,18 +65,46 @@ export default function Boletos() {
   }, [cadastros, tarefas])
 
   const handleMarcarFeito = async (item: BoletoItem) => {
-    const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : 'Boleto 1 dia'
-    await db.saveTarefa({
-      contrato: item.contrato,
-      tipo: tipoStr as 'Boleto 5 dias' | 'Boleto 1 dia',
-      usuario: 'Sistema',
-      referencia: currentMonthRef,
-    })
-    await refreshData()
+    if (!window.confirm(`Deseja realmente marcar o aviso de boleto para o contrato ${item.contrato} como feito?`)) return;
+    
+    const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : item.tipoAviso === '1_dia' ? 'Boleto 1 dia' : 'Boleto Hoje'
+    try {
+      await db.saveTarefa({
+        contrato: item.contrato,
+        tipo: tipoStr as any,
+        usuario: 'Sistema',
+        referencia: currentMonthRef,
+      })
+      await refreshData()
+      addToast('Aviso de boleto marcado como feito!', 'success')
+    } catch (error) {
+      addToast('Erro ao marcar aviso de boleto.', 'error')
+    }
   }
 
-  const cincoDias = boletos.filter((b) => b.tipoAviso === '5_dias')
-  const umDia = boletos.filter((b) => b.tipoAviso === '1_dia')
+  const handleDesfazer = async (item: BoletoItem) => {
+    if (!window.confirm(`Deseja desmarcar o aviso de boleto do contrato ${item.contrato}?`)) return;
+
+    const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : item.tipoAviso === '1_dia' ? 'Boleto 1 dia' : 'Boleto Hoje'
+    try {
+      const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
+      if (task) {
+         await db.deleteTarefa(task.idTarefa)
+         await refreshData()
+         addToast('Ação desfeita com sucesso!', 'success')
+      }
+    } catch (error) {
+      addToast('Erro ao desfazer ação.', 'error')
+    }
+  }
+
+  const pendentes = boletos.filter(b => !b.isFeito)
+  const concluidos = boletos.filter(b => b.isFeito)
+  const currentList = tab === 'pendentes' ? pendentes : concluidos
+
+  const cincoDias = currentList.filter((b) => b.tipoAviso === '5_dias')
+  const umDia = currentList.filter((b) => b.tipoAviso === '1_dia')
+  const hoje = currentList.filter((b) => b.tipoAviso === 'hoje')
 
   const renderList = (lista: BoletoItem[], title: string, dotClass: string, textClass: string) => (
     <div className="mb-8 last:mb-0">
@@ -116,13 +148,24 @@ export default function Boletos() {
                     <MessageCircle className="h-4 w-4" />
                     Avisar
                   </a>
-                  <button
-                    onClick={() => handleMarcarFeito(item)}
-                    className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    Feito
-                  </button>
+                  {!item.isFeito ? (
+                    <button
+                      onClick={() => handleMarcarFeito(item)}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Feito
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleDesfazer(item)}
+                      className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600"
+                      title="Desfazer"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      Concluído
+                    </button>
+                  )}
                 </div>
               </li>
             )
@@ -146,11 +189,37 @@ export default function Boletos() {
         </p>
       </div>
 
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => setTab('pendentes')}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === 'pendentes'
+              ? 'border-b-2 border-primary text-primary'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+          }`}
+        >
+          Pendentes ({pendentes.length})
+        </button>
+        <button
+          onClick={() => setTab('concluidos')}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === 'concluidos'
+              ? 'border-b-2 border-primary text-primary'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+          }`}
+        >
+          Concluídos ({concluidos.length})
+        </button>
+      </div>
+
       <div className="p-6">
         {loading ? (
           <div className="flex justify-center p-8 text-muted-foreground">Carregando...</div>
+        ) : currentList.length === 0 ? (
+          <div className="flex justify-center p-8 text-muted-foreground">Nenhum boleto {tab === 'pendentes' ? 'pendente' : 'concluído'}.</div>
         ) : (
           <>
+            {renderList(hoje, 'Vence Hoje', 'bg-red-500', 'text-red-500')}
             {renderList(umDia, 'Avisar Amanhã (Falta 1 dia)', 'bg-warning-foreground', 'text-warning-foreground')}
             {renderList(cincoDias, 'Avisar em 5 dias', 'bg-brand-navy', 'text-brand-navy')}
           </>

@@ -64,7 +64,7 @@ export const checkBirthday = (ddmm: any): { isBirthday: boolean; daysAway: numbe
 /**
  * Checks if a billing day (e.g., 15) is 5 days away or 1 day away from today.
  */
-export const checkBoletoWarning = (diaVencimento: any): '5_dias' | '1_dia' | null => {
+export const checkBoletoWarning = (diaVencimento: any): '5_dias' | '1_dia' | 'hoje' | null => {
   const dia = Number(diaVencimento);
   if (!dia || isNaN(dia) || dia < 1 || dia > 31) return null;
 
@@ -78,6 +78,11 @@ export const checkBoletoWarning = (diaVencimento: any): '5_dias' | '1_dia' | nul
     // We'll keep it simple:
     const d = new Date(year, month, dia);
     
+    // Hoje
+    if (d.getDate() === today.getDate() && d.getMonth() === today.getMonth()) {
+      return 'hoje';
+    }
+
     // 5 days warning
     const fiveDaysBefore = new Date(d);
     fiveDaysBefore.setDate(d.getDate() - 5);

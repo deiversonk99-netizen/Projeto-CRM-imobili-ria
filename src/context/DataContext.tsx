@@ -19,7 +19,6 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   const refreshData = async () => {
-    setLoading(true);
     try {
       const [cads, checks, tars] = await Promise.all([
         db.getCadastros(),
@@ -31,13 +30,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setTarefas(tars || []);
     } catch (error) {
       console.error('Error fetching data', error);
-    } finally {
-      setLoading(false);
     }
   };
 
   useEffect(() => {
-    refreshData();
+    refreshData().finally(() => setLoading(false));
   }, []);
 
   return (

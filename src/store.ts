@@ -29,6 +29,36 @@ export const db = {
     }
   },
 
+  updateCadastro: async (cadastro: Cadastro): Promise<void> => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ action: 'updateCadastro', data: cadastro }),
+      });
+    } catch (error) {
+      console.error('Error updating cadastro:', error);
+      throw error;
+    }
+  },
+
+  deleteCadastro: async (id: string): Promise<void> => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ action: 'deleteCadastro', id }),
+      });
+    } catch (error) {
+      console.error('Error deleting cadastro:', error);
+      throw error;
+    }
+  },
+
   getChecklists: async (): Promise<ChecklistDocs[]> => {
     try {
       const response = await fetch(`${GAS_URL}?action=getChecklists`);
@@ -77,6 +107,21 @@ export const db = {
       });
     } catch (error) {
       console.error('Error saving tarefa:', error);
+      throw error;
+    }
+  },
+
+  deleteTarefa: async (idTarefa: string): Promise<void> => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ action: 'deleteTarefa', id: idTarefa }),
+      });
+    } catch (error) {
+      console.error('Error deleting tarefa:', error);
       throw error;
     }
   }

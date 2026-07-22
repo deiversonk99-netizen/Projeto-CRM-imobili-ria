@@ -5,6 +5,7 @@ import { db } from '../store'
 import { checkBirthday, getWhatsappLink } from '../utils/dates'
 import { Gift, MessageCircle, CheckCircle, CalendarDays } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import { useToast } from '../components/ui/Toast'
 
 interface BirthdayItem {
   id: string
@@ -14,12 +15,14 @@ interface BirthdayItem {
   dataStr: string
   diasAte: number
   contrato: string
+  isFeito: boolean
 }
 
 export default function Aniversarios() {
   const { cadastros, tarefas, refreshData } = useData()
   const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [tab, setTab] = useState<'pendentes' | 'concluidos'>('pendentes')
   const currentYear = new Date().getFullYear().toString()
 
   const loadData = () => {
@@ -33,7 +36,7 @@ export default function Aniversarios() {
 
     cadastros.forEach((c) => {
       const propBday = checkBirthday(c.niverProp)
-      if (propBday && !doneIds.has(`${c.contrato}-Proprietário`)) {
+      if (propBday) {
         result.push({
           id: `${c.id}-prop`,
           nome: c.nomeProp,
@@ -42,11 +45,12 @@ export default function Aniversarios() {
           dataStr: propBday.dateStr,
           diasAte: propBday.daysAway,
           contrato: c.contrato,
+          isFeito: doneIds.has(`${c.contrato}-Proprietário`),
         })
       }
 
       const inqBday = checkBirthday(c.niverInq)
-      if (inqBday && !doneIds.has(`${c.contrato}-Inquilino`)) {
+      if (inqBday) {
         result.push({
           id: `${c.id}-inq`,
           nome: c.nomeInq,
@@ -55,6 +59,7 @@ export default function Aniversarios() {
           dataStr: inqBday.dateStr,
           diasAte: inqBday.daysAway,
           contrato: c.contrato,
+          isFeito: doneIds.has(`${c.contrato}-Inquilino`),
         })
       }
     })
@@ -63,6 +68,8 @@ export default function Aniversarios() {
     setAniversariantes(result)
   }
 
+  const { addToast } = useToast()
+  
   useEffect(() => {
     if (cadastros && tarefas) {
       loadData()
@@ -70,14 +77,41 @@ export default function Aniversarios() {
   }, [cadastros, tarefas])
 
   const handleMarcarFeito = async (item: BirthdayItem) => {
-    await db.saveTarefa({
-      contrato: item.contrato,
-      tipo: 'Aniversário',
-      usuario: item.tipo,
-      referencia: currentYear,
-    })
-    await refreshData()
+    if (!window.confirm(`Deseja realmente marcar o aniversário de ${item.nome} como feito?`)) return;
+
+    try {
+      await db.saveTarefa({
+        contrato: item.contrato,
+        tipo: 'Aniversário',
+        usuario: item.tipo,
+        referencia: currentYear,
+      })
+      await refreshData()
+      addToast('Aniversário marcado como feito!', 'success')
+    } catch (error) {
+      addToast('Erro ao marcar aniversário.', 'error')
+    }
   }
+
+  const handleDesfazer = async (item: BirthdayItem) => {
+    if (!window.confirm(`Deseja desmarcar o aniversário de ${item.nome}?`)) return;
+
+    try {
+      // Find the task id
+      const task = tarefas.find(t => t.tipo === 'Aniversário' && t.referencia === currentYear && t.contrato === item.contrato && t.usuario === item.tipo)
+      if (task) {
+         await db.deleteTarefa(task.idTarefa)
+         await refreshData()
+         addToast('Ação desfeita com sucesso!', 'success')
+      }
+    } catch (error) {
+      addToast('Erro ao desfazer ação.', 'error')
+    }
+  }
+
+  const pendentes = aniversariantes.filter(a => !a.isFeito)
+  const concluidos = aniversariantes.filter(a => a.isFeito)
+  const currentList = tab === 'pendentes' ? pendentes : concluidos
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -93,20 +127,42 @@ export default function Aniversarios() {
         </p>
       </div>
 
+      <div className="flex border-b border-border">
+        <button
+          onClick={() => setTab('pendentes')}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === 'pendentes'
+              ? 'border-b-2 border-primary text-primary'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+          }`}
+        >
+          Pendentes ({pendentes.length})
+        </button>
+        <button
+          onClick={() => setTab('concluidos')}
+          className={`flex-1 py-3 text-sm font-medium transition-colors ${
+            tab === 'concluidos'
+              ? 'border-b-2 border-primary text-primary'
+              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+          }`}
+        >
+          Concluídos ({concluidos.length})
+        </button>
+      </div>
+
       <div>
         {loading ? (
           <div className="flex justify-center p-8 text-muted-foreground">Carregando...</div>
-        ) : aniversariantes.length === 0 ? (
+        ) : currentList.length === 0 ? (
           <div className="flex flex-col items-center p-14 text-center text-muted-foreground">
             <span className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <Gift className="h-7 w-7 text-muted-foreground/50" />
             </span>
-            <p className="font-medium">Nenhum aniversário nos próximos dias.</p>
-            <p className="mt-1 text-sm">Os aniversariantes aparecerão aqui automaticamente.</p>
+            <p className="font-medium">Nenhum aniversário {tab === 'pendentes' ? 'pendente' : 'concluído'}.</p>
           </div>
         ) : (
           <ul className="divide-y divide-border">
-            {aniversariantes.map((item) => {
+            {currentList.map((item) => {
               const text = `Olá ${item.nome}! A IMG Imóveis Mogi Guaçu deseja um Feliz Aniversário! 🎉`
               const isToday = item.diasAte === 0
 
@@ -145,13 +201,24 @@ export default function Aniversarios() {
                       <MessageCircle className="h-4 w-4" />
                       WhatsApp
                     </a>
-                    <button
-                      onClick={() => handleMarcarFeito(item)}
-                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
-                    >
-                      <CheckCircle className="h-4 w-4" />
-                      Marcar Feito
-                    </button>
+                    {!item.isFeito ? (
+                      <button
+                        onClick={() => handleMarcarFeito(item)}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        Marcar Feito
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleDesfazer(item)}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                        title="Desfazer"
+                      >
+                        <CheckCircle className="h-4 w-4" />
+                        Concluído
+                      </button>
+                    )}
                   </div>
                 </li>
               )

@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import type { ChecklistDocs, Cadastro } from '../types'
-import { FileCheck, Search, Save, Loader2 } from 'lucide-react'
+import { FileCheck, Search, Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import { useToast } from '../components/ui/Toast'
 
 const checkboxClass =
   'mt-0.5 h-4.5 w-4.5 shrink-0 rounded border-input text-primary accent-[#76b82a] focus:ring-2 focus:ring-ring/40'
@@ -19,21 +20,35 @@ function ChecklistItem({
   label: string
 }) {
   return (
-    <label className="group flex cursor-pointer items-start gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/60">
-      <input type="checkbox" checked={checked} onChange={onChange} className={checkboxClass} />
-      <span
-        className={`text-sm transition-colors ${
-          checked ? 'text-muted-foreground line-through' : 'text-foreground group-hover:text-brand-navy'
-        }`}
-      >
-        {label}
-      </span>
-    </label>
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand-navy/30">
+      <label className="group flex cursor-pointer items-start gap-3">
+        <input type="checkbox" checked={checked} onChange={onChange} className={checkboxClass} />
+        <span
+          className={`text-sm font-medium transition-colors ${
+            checked ? 'text-muted-foreground line-through' : 'text-foreground'
+          }`}
+        >
+          {label}
+        </span>
+      </label>
+      <div className="flex items-center gap-1.5 sm:ml-4 pl-7 sm:pl-0">
+        {checked ? (
+          <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+            <CheckCircle2 className="h-3.5 w-3.5" /> Correto
+          </span>
+        ) : (
+          <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
+            <AlertCircle className="h-3.5 w-3.5" /> Pendente
+          </span>
+        )}
+      </div>
+    </div>
   )
 }
 
 export default function Documentos() {
   const { cadastros: contextCadastros, checklists: contextChecklists, refreshData } = useData()
+  const { addToast } = useToast()
   const [checklists, setChecklists] = useState<ChecklistDocs[]>([])
   const [cadastros, setCadastros] = useState<Record<string, Cadastro>>({})
   const [loading, setLoading] = useState(false)
@@ -69,9 +84,15 @@ export default function Documentos() {
 
   const handleSave = async (checklist: ChecklistDocs) => {
     setSavingId(checklist.id)
-    await db.updateChecklist(checklist)
-    await refreshData()
-    setSavingId(null)
+    try {
+      await db.updateChecklist(checklist)
+      await refreshData()
+      addToast('Checklist salvo com sucesso!', 'success')
+    } catch (error) {
+      addToast('Erro ao salvar checklist', 'error')
+    } finally {
+      setSavingId(null)
+    }
   }
 
   const filtered = checklists.filter((c) => {

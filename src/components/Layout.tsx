@@ -9,14 +9,14 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { id: 'cadastro', label: 'Novo Cadastro', icon: PlusCircle },
+  { id: 'cadastro', label: 'Cadastros', icon: PlusCircle },
   { id: 'aniversarios', label: 'Aniversários', icon: Calendar },
   { id: 'documentos', label: 'Checklist Docs', icon: FileCheck },
   { id: 'boletos', label: 'Envio de Boletos', icon: FileText },
 ];
 
 const pageTitles: Record<string, string> = {
-  cadastro: 'Novo Cadastro',
+  cadastro: 'Cadastros',
   aniversarios: 'Aniversários',
   documentos: 'Checklist de Documentos',
   boletos: 'Envio de Boletos',

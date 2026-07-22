@@ -24,7 +24,7 @@ export interface ChecklistDocs {
   inq_seguroIncendio: boolean;
 }
 
-export type TipoTarefa = 'Aniversário' | 'Boleto 5 dias' | 'Boleto 1 dia';
+export type TipoTarefa = 'Aniversário' | 'Boleto 5 dias' | 'Boleto 1 dia' | 'Boleto Hoje';
 
 export interface TarefaConcluida {
   idTarefa: string;

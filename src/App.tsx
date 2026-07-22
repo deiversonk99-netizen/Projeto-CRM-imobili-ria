@@ -5,11 +5,12 @@
 
 import React, { useState } from 'react';
 import Layout from './components/Layout';
-import NovoCadastro from './pages/NovoCadastro';
+import Cadastros from './pages/Cadastros';
 import Aniversarios from './pages/Aniversarios';
 import Documentos from './pages/Documentos';
 import Boletos from './pages/Boletos';
 import { DataProvider, useData } from './context/DataContext';
+import { ToastProvider } from './components/ui/Toast';
 
 function AppContent() {
   const [activeTab, setActiveTab] = useState('cadastro');
@@ -26,7 +27,7 @@ function AppContent() {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {activeTab === 'cadastro' && <NovoCadastro />}
+      {activeTab === 'cadastro' && <Cadastros />}
       {activeTab === 'aniversarios' && <Aniversarios />}
       {activeTab === 'documentos' && <Documentos />}
       {activeTab === 'boletos' && <Boletos />}
@@ -37,7 +38,9 @@ function AppContent() {
 export default function App() {
   return (
     <DataProvider>
-      <AppContent />
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
     </DataProvider>
   );
 }

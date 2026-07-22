@@ -18,8 +18,9 @@ export const db = {
     try {
       await fetch(GAS_URL, {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'text/plain',
         },
         body: JSON.stringify({ action: 'saveCadastro', data: cadastro }),
       });
@@ -44,8 +45,9 @@ export const db = {
     try {
       await fetch(GAS_URL, {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'text/plain',
         },
         body: JSON.stringify({ action: 'updateChecklist', data: checklist }),
       });
@@ -70,8 +72,9 @@ export const db = {
     try {
       await fetch(GAS_URL, {
         method: 'POST',
+        mode: 'no-cors',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8',
+          'Content-Type': 'text/plain',
         },
         body: JSON.stringify({ action: 'saveTarefa', data: tarefa }),
       });

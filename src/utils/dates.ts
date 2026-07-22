@@ -78,8 +78,9 @@ export const checkBoletoWarning = (diaVencimento: number): '5_dias' | '1_dia' | 
   return resNextMonth;
 };
 
-export const getWhatsappLink = (phone: string, text: string) => {
-  const cleanPhone = phone.replace(/\D/g, '');
+export const getWhatsappLink = (phone: string | number, text: string) => {
+  const phoneStr = phone ? String(phone) : '';
+  const cleanPhone = phoneStr.replace(/\D/g, '');
   const encodedText = encodeURIComponent(text);
   return `https://wa.me/55${cleanPhone}?text=${encodedText}`;
 };

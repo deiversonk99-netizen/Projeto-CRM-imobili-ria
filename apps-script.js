@@ -1,5 +1,5 @@
 function setupSpreadsheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
 
   const sheetsConfig = {
     'Cadastros': [
@@ -72,7 +72,7 @@ function handleRequest(body) {
 }
 
 function getSheetData(sheetName) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName(sheetName);
   if (!sheet) return [];
   
   const data = sheet.getDataRange().getValues();
@@ -95,7 +95,7 @@ function getSheetData(sheetName) {
 }
 
 function saveCadastro(cadastroData) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
   const sheet = ss.getSheetByName('Cadastros');
   
   const id = Utilities.getUuid();
@@ -118,7 +118,7 @@ function saveCadastro(cadastroData) {
 }
 
 function updateChecklist(checklistData) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Checklists');
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Checklists');
   const data = sheet.getDataRange().getValues();
   
   for (let i = 1; i < data.length; i++) {
@@ -138,7 +138,7 @@ function updateChecklist(checklistData) {
 }
 
 function saveTarefa(tarefaData) {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Tarefas');
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Tarefas');
   const idTarefa = Utilities.getUuid();
   const dataConclusao = new Date().toISOString();
   

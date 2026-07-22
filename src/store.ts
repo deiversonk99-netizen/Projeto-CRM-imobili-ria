@@ -1,92 +1,83 @@
 import { Cadastro, ChecklistDocs, TarefaConcluida } from './types';
 
-const STORAGE_KEYS = {
-  CADASTROS: 'gas_cadastros',
-  CHECKLISTS: 'gas_checklists',
-  TAREFAS: 'gas_tarefas',
-};
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzL4JN0w6Kh_TM_V9A4V4YrgmfFMw-E8grL8ik6-HVsXeAKYc1JgqEQGCrNGUbYO0ou_g/exec';
 
-// Simulate Google Sheets backend with LocalStorage
 export const db = {
-  getCadastros: (): Cadastro[] => {
-    const data = localStorage.getItem(STORAGE_KEYS.CADASTROS);
-    return data ? JSON.parse(data) : [];
+  getCadastros: async (): Promise<Cadastro[]> => {
+    try {
+      const response = await fetch(`${GAS_URL}?action=getCadastros`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching cadastros:', error);
+      return [];
+    }
   },
   
-  saveCadastro: (cadastro: Omit<Cadastro, 'id' | 'dataHora'>): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const cadastros = db.getCadastros();
-        const id = Math.random().toString(36).substr(2, 9).toUpperCase();
-        const dataHora = new Date().toISOString();
-        
-        const novoCadastro: Cadastro = {
-          ...cadastro,
-          id,
-          dataHora,
-        };
-        
-        cadastros.push(novoCadastro);
-        localStorage.setItem(STORAGE_KEYS.CADASTROS, JSON.stringify(cadastros));
-        
-        // Auto-create checklist
-        const checklists = db.getChecklists();
-        checklists.push({
-          id,
-          contrato: cadastro.contrato,
-          prop_contratoEnviado: false,
-          prop_vistoriaEnviada: false,
-          inq_manualEntregue: false,
-          inq_vistoriaAssinada: false,
-          inq_seguroIncendio: false,
-        });
-        localStorage.setItem(STORAGE_KEYS.CHECKLISTS, JSON.stringify(checklists));
-        
-        resolve();
-      }, 800); // Simulate network delay
-    });
+  saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'>): Promise<void> => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ action: 'saveCadastro', data: cadastro }),
+      });
+    } catch (error) {
+      console.error('Error saving cadastro:', error);
+      throw error;
+    }
   },
 
-  getChecklists: (): ChecklistDocs[] => {
-    const data = localStorage.getItem(STORAGE_KEYS.CHECKLISTS);
-    return data ? JSON.parse(data) : [];
+  getChecklists: async (): Promise<ChecklistDocs[]> => {
+    try {
+      const response = await fetch(`${GAS_URL}?action=getChecklists`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching checklists:', error);
+      return [];
+    }
   },
 
-  updateChecklist: (checklist: ChecklistDocs): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const checklists = db.getChecklists();
-        const index = checklists.findIndex((c) => c.id === checklist.id);
-        if (index > -1) {
-          checklists[index] = checklist;
-          localStorage.setItem(STORAGE_KEYS.CHECKLISTS, JSON.stringify(checklists));
-        }
-        resolve();
-      }, 500);
-    });
+  updateChecklist: async (checklist: ChecklistDocs): Promise<void> => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ action: 'updateChecklist', data: checklist }),
+      });
+    } catch (error) {
+      console.error('Error updating checklist:', error);
+      throw error;
+    }
   },
 
-  getTarefas: (): TarefaConcluida[] => {
-    const data = localStorage.getItem(STORAGE_KEYS.TAREFAS);
-    return data ? JSON.parse(data) : [];
+  getTarefas: async (): Promise<TarefaConcluida[]> => {
+    try {
+      const response = await fetch(`${GAS_URL}?action=getTarefas`);
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching tarefas:', error);
+      return [];
+    }
   },
 
-  saveTarefa: (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const tarefas = db.getTarefas();
-        const idTarefa = Math.random().toString(36).substr(2, 9).toUpperCase();
-        const dataConclusao = new Date().toISOString();
-        
-        tarefas.push({
-          ...tarefa,
-          idTarefa,
-          dataConclusao,
-        });
-        
-        localStorage.setItem(STORAGE_KEYS.TAREFAS, JSON.stringify(tarefas));
-        resolve();
-      }, 500);
-    });
+  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<void> => {
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ action: 'saveTarefa', data: tarefa }),
+      });
+    } catch (error) {
+      console.error('Error saving tarefa:', error);
+      throw error;
+    }
   }
 };

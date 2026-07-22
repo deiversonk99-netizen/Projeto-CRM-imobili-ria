@@ -38,10 +38,10 @@ export default function Documentos() {
   const [searchTerm, setSearchTerm] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true)
-    const checks = db.getChecklists()
-    const cads = db.getCadastros()
+    const checks = await db.getChecklists()
+    const cads = await db.getCadastros()
 
     const cadMap: Record<string, Cadastro> = {}
     cads.forEach((c) => {

@@ -22,10 +22,10 @@ export default function Boletos() {
   // Formato: YYYY-MM
   const currentMonthRef = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true)
-    const cadastros = db.getCadastros()
-    const tarefas = db.getTarefas()
+    const cadastros = await db.getCadastros()
+    const tarefas = await db.getTarefas()
 
     const doneIds = new Set(
       tarefas

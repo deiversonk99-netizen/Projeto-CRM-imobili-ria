@@ -20,10 +20,10 @@ export default function Aniversarios() {
   const [loading, setLoading] = useState(true)
   const currentYear = new Date().getFullYear().toString()
 
-  const loadData = () => {
+  const loadData = async () => {
     setLoading(true)
-    const cadastros = db.getCadastros()
-    const tarefas = db.getTarefas()
+    const cadastros = await db.getCadastros()
+    const tarefas = await db.getTarefas()
 
     const doneIds = new Set(
       tarefas

@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { db } from '../store'
 import type { Cadastro } from '../types'
 import { Save, Loader2, CheckCircle2, FileSignature, UserRound, KeyRound } from 'lucide-react'
+import { useData } from '../context/DataContext'
 
 const inputClass =
   'w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30'
@@ -28,6 +29,7 @@ function SectionTitle({
 }
 
 export default function NovoCadastro() {
+  const { refreshData } = useData()
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
 
@@ -59,6 +61,7 @@ export default function NovoCadastro() {
     setSuccess(false)
     try {
       await db.saveCadastro(formData)
+      await refreshData()
       setSuccess(true)
       setFormData({
         contrato: '',

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import type { ChecklistDocs, Cadastro } from '../types'
 import { FileCheck, Search, Save, Loader2 } from 'lucide-react'
+import { useData } from '../context/DataContext'
 
 const checkboxClass =
   'mt-0.5 h-4.5 w-4.5 shrink-0 rounded border-input text-primary accent-[#76b82a] focus:ring-2 focus:ring-ring/40'
@@ -32,30 +33,28 @@ function ChecklistItem({
 }
 
 export default function Documentos() {
+  const { cadastros: contextCadastros, checklists: contextChecklists, refreshData } = useData()
   const [checklists, setChecklists] = useState<ChecklistDocs[]>([])
   const [cadastros, setCadastros] = useState<Record<string, Cadastro>>({})
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
 
-  const loadData = async () => {
-    setLoading(true)
-    const checks = await db.getChecklists()
-    const cads = await db.getCadastros()
-
+  const loadData = () => {
     const cadMap: Record<string, Cadastro> = {}
-    cads.forEach((c) => {
+    contextCadastros.forEach((c) => {
       cadMap[c.contrato] = c
     })
 
     setCadastros(cadMap)
-    setChecklists(checks)
-    setLoading(false)
+    setChecklists(contextChecklists)
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (contextCadastros && contextChecklists) {
+      loadData()
+    }
+  }, [contextCadastros, contextChecklists])
 
   const handleToggle = (id: string, field: keyof ChecklistDocs) => {
     setChecklists((prev) =>
@@ -71,6 +70,7 @@ export default function Documentos() {
   const handleSave = async (checklist: ChecklistDocs) => {
     setSavingId(checklist.id)
     await db.updateChecklist(checklist)
+    await refreshData()
     setSavingId(null)
   }
 

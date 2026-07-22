@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import { checkBoletoWarning, getWhatsappLink } from '../utils/dates'
 import { FileText, MessageCircle, CheckCircle } from 'lucide-react'
+import { useData } from '../context/DataContext'
 
 interface BoletoItem {
   id: string
@@ -16,17 +17,14 @@ interface BoletoItem {
 }
 
 export default function Boletos() {
+  const { cadastros, tarefas, refreshData } = useData()
   const [boletos, setBoletos] = useState<BoletoItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   // Formato: YYYY-MM
   const currentMonthRef = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
 
-  const loadData = async () => {
-    setLoading(true)
-    const cadastros = await db.getCadastros()
-    const tarefas = await db.getTarefas()
-
+  const loadData = () => {
     const doneIds = new Set(
       tarefas
         .filter((t) => t.tipo.startsWith('Boleto') && t.referencia === currentMonthRef)
@@ -54,12 +52,13 @@ export default function Boletos() {
     })
 
     setBoletos(result)
-    setLoading(false)
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (cadastros && tarefas) {
+      loadData()
+    }
+  }, [cadastros, tarefas])
 
   const handleMarcarFeito = async (item: BoletoItem) => {
     const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : 'Boleto 1 dia'
@@ -69,7 +68,7 @@ export default function Boletos() {
       usuario: 'Sistema',
       referencia: currentMonthRef,
     })
-    loadData()
+    await refreshData()
   }
 
   const cincoDias = boletos.filter((b) => b.tipoAviso === '5_dias')

@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import { checkBirthday, getWhatsappLink } from '../utils/dates'
 import { Gift, MessageCircle, CheckCircle, CalendarDays } from 'lucide-react'
+import { useData } from '../context/DataContext'
 
 interface BirthdayItem {
   id: string
@@ -16,15 +17,12 @@ interface BirthdayItem {
 }
 
 export default function Aniversarios() {
+  const { cadastros, tarefas, refreshData } = useData()
   const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const currentYear = new Date().getFullYear().toString()
 
-  const loadData = async () => {
-    setLoading(true)
-    const cadastros = await db.getCadastros()
-    const tarefas = await db.getTarefas()
-
+  const loadData = () => {
     const doneIds = new Set(
       tarefas
         .filter((t) => t.tipo === 'Aniversário' && t.referencia === currentYear)
@@ -63,12 +61,13 @@ export default function Aniversarios() {
 
     result.sort((a, b) => a.diasAte - b.diasAte)
     setAniversariantes(result)
-    setLoading(false)
   }
 
   useEffect(() => {
-    loadData()
-  }, [])
+    if (cadastros && tarefas) {
+      loadData()
+    }
+  }, [cadastros, tarefas])
 
   const handleMarcarFeito = async (item: BirthdayItem) => {
     await db.saveTarefa({
@@ -77,7 +76,7 @@ export default function Aniversarios() {
       usuario: item.tipo,
       referencia: currentYear,
     })
-    loadData()
+    await refreshData()
   }
 
   return (

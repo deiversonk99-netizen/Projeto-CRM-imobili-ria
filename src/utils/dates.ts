@@ -4,14 +4,40 @@ import { addDays, format, isSameDay, parse, parseISO } from 'date-fns';
  * Checks if a DD/MM birthday is today or within the next 3 days.
  * Ignores the year.
  */
-export const checkBirthday = (ddmm: string): { isBirthday: boolean; daysAway: number; dateStr: string } | null => {
-  if (!ddmm || ddmm.length !== 5 || !ddmm.includes('/')) return null;
+export const checkBirthday = (ddmm: any): { isBirthday: boolean; daysAway: number; dateStr: string } | null => {
+  if (!ddmm) return null;
+  
+  let day: number, month: number;
+
+  if (typeof ddmm === 'string') {
+    if (ddmm.includes('T')) {
+      // Looks like an ISO date string
+      const date = new Date(ddmm);
+      if (!isNaN(date.getTime())) {
+        day = date.getDate();
+        month = date.getMonth() + 1;
+      } else {
+        return null;
+      }
+    } else if (ddmm.includes('/')) {
+      const parts = ddmm.split('/');
+      day = parseInt(parts[0], 10);
+      month = parseInt(parts[1], 10);
+    } else {
+      return null;
+    }
+  } else {
+    return null; // Not a recognized format
+  }
+
+  if (isNaN(day) || isNaN(month) || day < 1 || day > 31 || month < 1 || month > 12) {
+    return null;
+  }
   
   const today = new Date();
-  const [day, month] = ddmm.split('/');
   
   // Create a date object for the birthday THIS year
-  const bdayThisYear = new Date(today.getFullYear(), parseInt(month) - 1, parseInt(day));
+  const bdayThisYear = new Date(today.getFullYear(), month - 1, day);
   
   // If the birthday already passed this year (by more than a few days), check next year
   // (Not strictly necessary if we only check today and next 3 days, but good practice)
@@ -38,8 +64,9 @@ export const checkBirthday = (ddmm: string): { isBirthday: boolean; daysAway: nu
 /**
  * Checks if a billing day (e.g., 15) is 5 days away or 1 day away from today.
  */
-export const checkBoletoWarning = (diaVencimento: number): '5_dias' | '1_dia' | null => {
-  if (!diaVencimento || diaVencimento < 1 || diaVencimento > 31) return null;
+export const checkBoletoWarning = (diaVencimento: any): '5_dias' | '1_dia' | null => {
+  const dia = Number(diaVencimento);
+  if (!dia || isNaN(dia) || dia < 1 || dia > 31) return null;
 
   const today = new Date();
   // We'll test against the current month, and next month just in case we are at the end of the month
@@ -49,7 +76,7 @@ export const checkBoletoWarning = (diaVencimento: number): '5_dias' | '1_dia' | 
     // Note: JS Date handles overflow (e.g. Feb 30 becomes Mar 2) which is a bit weird, 
     // but in real apps you'd want to cap to the last day of the month.
     // We'll keep it simple:
-    const d = new Date(year, month, diaVencimento);
+    const d = new Date(year, month, dia);
     
     // 5 days warning
     const fiveDaysBefore = new Date(d);
@@ -78,9 +105,9 @@ export const checkBoletoWarning = (diaVencimento: number): '5_dias' | '1_dia' | 
   return resNextMonth;
 };
 
-export const getWhatsappLink = (phone: string | number, text: string) => {
-  const phoneStr = phone ? String(phone) : '';
-  const cleanPhone = phoneStr.replace(/\D/g, '');
+export const getWhatsappLink = (phone: any, text: string) => {
+  const phoneStr = phone != null ? String(phone) : '';
+  const cleanPhone = typeof phoneStr === 'string' ? phoneStr.replace(/\D/g, '') : '';
   const encodedText = encodeURIComponent(text);
   return `https://wa.me/55${cleanPhone}?text=${encodedText}`;
 };

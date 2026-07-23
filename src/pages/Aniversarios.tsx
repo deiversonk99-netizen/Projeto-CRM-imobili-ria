@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import { checkBirthday, getWhatsappLink } from '../utils/dates'
-import { Gift, MessageCircle, CheckCircle, CalendarDays } from 'lucide-react'
+import { Gift, MessageCircle, CheckCircle, CalendarDays, Loader2 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
+import { ConfirmModal } from '../components/ui/ConfirmModal'
 
 interface BirthdayItem {
   id: string
@@ -22,7 +23,13 @@ export default function Aniversarios() {
   const { cadastros, tarefas, refreshData } = useData()
   const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [processingId, setProcessingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'pendentes' | 'concluidos'>('pendentes')
+  const [modal, setModal] = useState<{ isOpen: boolean; item: BirthdayItem | null; action: 'marcar' | 'desfazer' }>({
+    isOpen: false,
+    item: null,
+    action: 'marcar'
+  })
   const currentYear = new Date().getFullYear().toString()
 
   const loadData = () => {
@@ -76,36 +83,35 @@ export default function Aniversarios() {
     }
   }, [cadastros, tarefas])
 
-  const handleMarcarFeito = async (item: BirthdayItem) => {
-    if (!window.confirm(`Deseja realmente marcar o aniversário de ${item.nome} como feito?`)) return;
+  const confirmAction = async () => {
+    const { item, action } = modal
+    if (!item) return
+
+    setModal({ ...modal, isOpen: false })
+    setProcessingId(item.id)
 
     try {
-      await db.saveTarefa({
-        contrato: item.contrato,
-        tipo: 'Aniversário',
-        usuario: item.tipo,
-        referencia: currentYear,
-      })
-      await refreshData()
-      addToast('Aniversário marcado como feito!', 'success')
-    } catch (error) {
-      addToast('Erro ao marcar aniversário.', 'error')
-    }
-  }
-
-  const handleDesfazer = async (item: BirthdayItem) => {
-    if (!window.confirm(`Deseja desmarcar o aniversário de ${item.nome}?`)) return;
-
-    try {
-      // Find the task id
-      const task = tarefas.find(t => t.tipo === 'Aniversário' && t.referencia === currentYear && t.contrato === item.contrato && t.usuario === item.tipo)
-      if (task) {
-         await db.deleteTarefa(task.idTarefa)
-         await refreshData()
-         addToast('Ação desfeita com sucesso!', 'success')
+      if (action === 'marcar') {
+        await db.saveTarefa({
+          contrato: item.contrato,
+          tipo: 'Aniversário',
+          usuario: item.tipo,
+          referencia: currentYear,
+        })
+        await refreshData()
+        addToast('Aniversário marcado como feito!', 'success')
+      } else {
+        const task = tarefas.find(t => t.tipo === 'Aniversário' && t.referencia === currentYear && t.contrato === item.contrato && t.usuario === item.tipo)
+        if (task) {
+           await db.deleteTarefa(task.idTarefa)
+           await refreshData()
+           addToast('Ação desfeita com sucesso!', 'success')
+        }
       }
     } catch (error) {
-      addToast('Erro ao desfazer ação.', 'error')
+      addToast(`Erro ao ${action === 'marcar' ? 'marcar' : 'desfazer'} ação.`, 'error')
+    } finally {
+      setProcessingId(null)
     }
   }
 
@@ -115,6 +121,20 @@ export default function Aniversarios() {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <ConfirmModal
+        isOpen={modal.isOpen}
+        title={modal.action === 'marcar' ? 'Marcar como Feito' : 'Desfazer Ação'}
+        message={
+          modal.action === 'marcar'
+            ? `Deseja realmente marcar o aniversário de ${modal.item?.nome} como feito?`
+            : `Deseja desfazer a marcação de aniversário de ${modal.item?.nome}?`
+        }
+        confirmText={modal.action === 'marcar' ? 'Sim, marcar' : 'Sim, desfazer'}
+        intent={modal.action === 'marcar' ? 'success' : 'warning'}
+        onConfirm={confirmAction}
+        onCancel={() => setModal({ ...modal, isOpen: false })}
+      />
+
       <div className="border-b border-border bg-muted/50 px-6 py-5">
         <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
@@ -165,6 +185,7 @@ export default function Aniversarios() {
             {currentList.map((item) => {
               const text = `Olá ${item.nome}! A IMG Imóveis Mogi Guaçu deseja um Feliz Aniversário! 🎉`
               const isToday = item.diasAte === 0
+              const isProcessing = processingId === item.id
 
               return (
                 <li
@@ -203,20 +224,22 @@ export default function Aniversarios() {
                     </a>
                     {!item.isFeito ? (
                       <button
-                        onClick={() => handleMarcarFeito(item)}
-                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+                        onClick={() => setModal({ isOpen: true, item, action: 'marcar' })}
+                        disabled={isProcessing}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[130px] justify-center"
                       >
-                        <CheckCircle className="h-4 w-4" />
-                        Marcar Feito
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                        {isProcessing ? 'Salvando...' : 'Marcar Feito'}
                       </button>
                     ) : (
                       <button
-                        onClick={() => handleDesfazer(item)}
-                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                        onClick={() => setModal({ isOpen: true, item, action: 'desfazer' })}
+                        disabled={isProcessing}
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 disabled:cursor-not-allowed w-[130px] justify-center"
                         title="Desfazer"
                       >
-                        <CheckCircle className="h-4 w-4" />
-                        Concluído
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <CheckCircle className="h-4 w-4" />}
+                        {isProcessing ? 'Aguarde...' : 'Concluído'}
                       </button>
                     )}
                   </div>

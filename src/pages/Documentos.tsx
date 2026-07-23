@@ -2,67 +2,61 @@
 
 import React, { useEffect, useState } from 'react'
 import { db } from '../store'
-import type { ChecklistDocs, Cadastro } from '../types'
-import { FileCheck, Search, Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import type { ChecklistDocs, Cadastro, DocumentoExtra } from '../types'
+import { FileCheck, Search, Save, Loader2, AlertCircle, CheckCircle2, Plus, Trash2 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
+import { v4 as uuidv4 } from 'uuid'
 
 const checkboxClass =
   'mt-0.5 h-4.5 w-4.5 shrink-0 rounded border-input text-primary accent-[#76b82a] focus:ring-2 focus:ring-ring/40'
 
-function ChecklistItem({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean
-  onChange: () => void
-  label: string
-}) {
-  return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand-navy/30">
-      <label className="group flex cursor-pointer items-start gap-3">
-        <input type="checkbox" checked={checked} onChange={onChange} className={checkboxClass} />
-        <span
-          className={`text-sm font-medium transition-colors ${
-            checked ? 'text-muted-foreground line-through' : 'text-foreground'
-          }`}
-        >
-          {label}
-        </span>
-      </label>
-      <div className="flex items-center gap-1.5 sm:ml-4 pl-7 sm:pl-0">
-        {checked ? (
-          <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
-            <CheckCircle2 className="h-3.5 w-3.5" /> Correto
-          </span>
-        ) : (
-          <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
-            <AlertCircle className="h-3.5 w-3.5" /> Pendente
-          </span>
-        )}
-      </div>
-    </div>
-  )
+export interface ExtendedChecklist extends ChecklistDocs {
+  docsExtras: DocumentoExtra[]
+}
+
+const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
+  if (!jsonStr || jsonStr === '[]') {
+    return [
+      { id: uuidv4(), nome: 'CNH', categoria: 'Locatário', isFeito: false, pendencia: '' },
+      { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locatário', isFeito: false, pendencia: '' },
+      { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locador', isFeito: false, pendencia: '' },
+      { id: uuidv4(), nome: 'Matrícula', categoria: 'Imóvel', isFeito: false, pendencia: '' }
+    ]
+  }
+  try {
+    return JSON.parse(jsonStr)
+  } catch (e) {
+    return []
+  }
 }
 
 export default function Documentos() {
   const { cadastros: contextCadastros, checklists: contextChecklists, refreshData } = useData()
   const { addToast } = useToast()
-  const [checklists, setChecklists] = useState<ChecklistDocs[]>([])
+  const [checklists, setChecklists] = useState<ExtendedChecklist[]>([])
   const [cadastros, setCadastros] = useState<Record<string, Cadastro>>({})
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [onlyPending, setOnlyPending] = useState(false)
+
+  // State for new custom document form
+  const [newDocForm, setNewDocForm] = useState<{ [key: string]: { nome: string, categoria: DocumentoExtra['categoria'] } }>({})
 
   const loadData = () => {
     const cadMap: Record<string, Cadastro> = {}
     contextCadastros.forEach((c) => {
-      cadMap[c.contrato] = c
+      cadMap[c.id] = c
     })
 
     setCadastros(cadMap)
-    setChecklists(contextChecklists)
+    setChecklists(
+      contextChecklists.map((c) => ({
+        ...c,
+        docsExtras: parseDocs(c.documentos_json)
+      }))
+    )
   }
 
   useEffect(() => {
@@ -71,7 +65,7 @@ export default function Documentos() {
     }
   }, [contextCadastros, contextChecklists])
 
-  const handleToggle = (id: string, field: keyof ChecklistDocs) => {
+  const handleToggleOld = (id: string, field: keyof ChecklistDocs) => {
     setChecklists((prev) =>
       prev.map((c) => {
         if (c.id === id) {
@@ -82,10 +76,85 @@ export default function Documentos() {
     )
   }
 
-  const handleSave = async (checklist: ChecklistDocs) => {
+  const handleToggleExtra = (checklistId: string, docId: string) => {
+    setChecklists((prev) =>
+      prev.map((c) => {
+        if (c.id === checklistId) {
+          return {
+            ...c,
+            docsExtras: c.docsExtras.map(d => d.id === docId ? { ...d, isFeito: !d.isFeito } : d)
+          }
+        }
+        return c
+      })
+    )
+  }
+
+  const handlePendenciaChange = (checklistId: string, docId: string, value: string) => {
+    setChecklists((prev) =>
+      prev.map((c) => {
+        if (c.id === checklistId) {
+          return {
+            ...c,
+            docsExtras: c.docsExtras.map(d => d.id === docId ? { ...d, pendencia: value } : d)
+          }
+        }
+        return c
+      })
+    )
+  }
+
+  const handleDeleteExtra = (checklistId: string, docId: string) => {
+    setChecklists((prev) =>
+      prev.map((c) => {
+        if (c.id === checklistId) {
+          return {
+            ...c,
+            docsExtras: c.docsExtras.filter(d => d.id !== docId)
+          }
+        }
+        return c
+      })
+    )
+  }
+
+  const handleAddExtra = (checklistId: string) => {
+    const form = newDocForm[checklistId]
+    if (!form || !form.nome.trim()) return
+
+    setChecklists((prev) =>
+      prev.map((c) => {
+        if (c.id === checklistId) {
+          return {
+            ...c,
+            docsExtras: [
+              ...c.docsExtras,
+              {
+                id: uuidv4(),
+                nome: form.nome.trim(),
+                categoria: form.categoria,
+                isFeito: false,
+                pendencia: ''
+              }
+            ]
+          }
+        }
+        return c
+      })
+    )
+    
+    setNewDocForm(prev => ({ ...prev, [checklistId]: { nome: '', categoria: 'Locatário' } }))
+  }
+
+  const handleSave = async (checklist: ExtendedChecklist) => {
     setSavingId(checklist.id)
     try {
-      await db.updateChecklist(checklist)
+      const { docsExtras, ...baseChecklist } = checklist
+      const dataToSave: ChecklistDocs = {
+        ...baseChecklist,
+        documentos_json: JSON.stringify(docsExtras)
+      }
+      await db.updateChecklist(dataToSave)
       await refreshData()
       addToast('Checklist salvo com sucesso!', 'success')
     } catch (error) {
@@ -97,13 +166,22 @@ export default function Documentos() {
 
   const filtered = checklists.filter((c) => {
     const term = searchTerm.toLowerCase()
-    const cad = cadastros[c.contrato]
+    const cad = cadastros[c.id]
     if (!cad) return false
-    return (
-      c.contrato.toLowerCase().includes(term) ||
+    
+    const matchesSearch = c.contrato.toLowerCase().includes(term) ||
       cad.nomeProp.toLowerCase().includes(term) ||
       cad.nomeInq.toLowerCase().includes(term)
-    )
+      
+    if (!matchesSearch) return false
+
+    if (onlyPending) {
+      const hasOldPending = !(c.prop_contratoEnviado && c.prop_vistoriaEnviada && c.inq_manualEntregue && c.inq_vistoriaAssinada && c.inq_seguroIncendio)
+      const hasExtraPending = c.docsExtras.some(d => !d.isFeito)
+      if (!hasOldPending && !hasExtraPending) return false
+    }
+
+    return true
   })
 
   return (
@@ -117,15 +195,26 @@ export default function Documentos() {
             Checklist de Documentos
           </h2>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Buscar contrato ou nome..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30 sm:w-72"
-          />
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <label className="flex items-center gap-2 text-sm font-medium text-foreground cursor-pointer">
+            <input 
+              type="checkbox" 
+              checked={onlyPending} 
+              onChange={(e) => setOnlyPending(e.target.checked)}
+              className={checkboxClass}
+            />
+            Mostrar somente pendentes
+          </label>
+          <div className="relative w-full sm:w-auto">
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar contrato ou nome..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30 sm:w-64"
+            />
+          </div>
         </div>
       </div>
 
@@ -138,15 +227,16 @@ export default function Documentos() {
               <FileCheck className="h-7 w-7 text-muted-foreground/50" />
             </span>
             <p className="font-medium">Nenhum checklist encontrado.</p>
-            <p className="mt-1 text-sm">Cadastre um contrato para gerar o checklist.</p>
+            <p className="mt-1 text-sm">Nenhum contrato condiz com os filtros selecionados.</p>
           </div>
         ) : (
           <div className="divide-y divide-border">
             {filtered.map((c) => {
-              const cad = cadastros[c.contrato]
+              const cad = cadastros[c.id]
               const isSaving = savingId === c.id
-              const total = 5
-              const done = [
+              
+              const oldTotal = 5
+              const oldDone = [
                 c.prop_contratoEnviado,
                 c.prop_vistoriaEnviada,
                 c.inq_manualEntregue,
@@ -154,11 +244,83 @@ export default function Documentos() {
                 c.inq_seguroIncendio,
               ].filter(Boolean).length
 
+              const extraTotal = c.docsExtras.length
+              const extraDone = c.docsExtras.filter(d => d.isFeito).length
+              
+              const total = oldTotal + extraTotal
+              const done = oldDone + extraDone
+
+              const renderOldItem = (checked: boolean, field: keyof ChecklistDocs, label: string) => {
+                if (onlyPending && checked) return null;
+                return (
+                  <div key={field} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand-navy/30">
+                    <label className="group flex cursor-pointer items-start gap-3">
+                      <input type="checkbox" checked={checked} onChange={() => handleToggleOld(c.id, field)} className={checkboxClass} />
+                      <span className={`text-sm font-medium transition-colors ${checked ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                        {label}
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-1.5 sm:ml-4 pl-7 sm:pl-0">
+                      {checked ? (
+                        <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Correto
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
+                          <AlertCircle className="h-3.5 w-3.5" /> Pendente
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              }
+
+              const renderExtraItem = (doc: DocumentoExtra) => {
+                if (onlyPending && doc.isFeito) return null;
+                return (
+                  <div key={doc.id} className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand-navy/30">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="group flex cursor-pointer items-start gap-3">
+                        <input type="checkbox" checked={doc.isFeito} onChange={() => handleToggleExtra(c.id, doc.id)} className={checkboxClass} />
+                        <span className={`text-sm font-medium transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                          {doc.nome}
+                        </span>
+                      </label>
+                      <div className="flex items-center justify-between sm:justify-end gap-3 pl-7 sm:pl-0">
+                        {doc.isFeito ? (
+                          <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Entregue
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
+                            <AlertCircle className="h-3.5 w-3.5" /> Pendente
+                          </span>
+                        )}
+                        <button onClick={() => handleDeleteExtra(c.id, doc.id)} className="text-muted-foreground hover:text-red-500 transition-colors" title="Remover documento">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    {!doc.isFeito && (
+                      <div className="pl-7 mt-1">
+                        <input 
+                          type="text" 
+                          value={doc.pendencia || ''}
+                          onChange={(e) => handlePendenciaChange(c.id, doc.id, e.target.value)}
+                          placeholder="Detalhes da pendência (opcional)..." 
+                          className="w-full text-sm rounded-lg border border-input bg-muted/50 px-3 py-1.5 focus:bg-card focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
               return (
                 <div key={c.id} className="p-6">
-                  <div className="mb-5 flex flex-col justify-between gap-3 border-b border-border pb-5 sm:flex-row sm:items-center">
+                  <div className="mb-5 flex flex-col justify-between gap-3 border-b border-border pb-5 lg:flex-row lg:items-center">
                     <div>
-                      <div className="mb-1 flex items-center gap-2.5">
+                      <div className="mb-1 flex flex-wrap items-center gap-2.5">
                         <span className="rounded-full bg-brand-navy px-2.5 py-0.5 text-xs font-semibold text-brand-navy-foreground">
                           Contrato: {c.contrato}
                         </span>
@@ -170,72 +332,97 @@ export default function Documentos() {
                           {done}/{total} concluídos
                         </span>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        <span className="font-medium text-foreground">Proprietário:</span>{' '}
-                        {cad.nomeProp} {' | '}
-                        <span className="font-medium text-foreground">Inquilino:</span>{' '}
-                        {cad.nomeInq}
+                      <p className="text-sm text-muted-foreground mt-2">
+                        <span className="font-medium text-foreground">Proprietário:</span> {cad.nomeProp} {' | '}
+                        <span className="font-medium text-foreground">Inquilino:</span> {cad.nomeInq}
                       </p>
                     </div>
                     <button
                       onClick={() => handleSave(c)}
                       disabled={isSaving}
-                      className="flex shrink-0 items-center gap-2 rounded-xl bg-brand-navy px-5 py-2.5 text-sm font-semibold text-brand-navy-foreground shadow-sm transition-all hover:brightness-125 disabled:opacity-70"
+                      className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-navy px-5 py-2.5 text-sm font-semibold text-brand-navy-foreground shadow-sm transition-all hover:brightness-125 disabled:opacity-70"
                     >
                       {isSaving ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Save className="h-4 w-4" />
                       )}
-                      Salvar
+                      Salvar Alterações
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                    {/* Proprietário */}
-                    <div>
-                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                        <span className="h-2 w-2 rounded-full bg-brand-navy" />
-                        Documentos Proprietário
-                      </h4>
-                      <div className="space-y-1.5">
-                        <ChecklistItem
-                          checked={c.prop_contratoEnviado}
-                          onChange={() => handleToggle(c.id, 'prop_contratoEnviado')}
-                          label="Contrato de locação assinado"
-                        />
-                        <ChecklistItem
-                          checked={c.prop_vistoriaEnviada}
-                          onChange={() => handleToggle(c.id, 'prop_vistoriaEnviada')}
-                          label="Termo de vistoria enviado"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Inquilino */}
+                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+                    {/* Locatário */}
                     <div>
                       <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
                         <span className="h-2 w-2 rounded-full bg-primary" />
-                        Documentos Inquilino
+                        Locatário / Inquilino
                       </h4>
-                      <div className="space-y-1.5">
-                        <ChecklistItem
-                          checked={c.inq_manualEntregue}
-                          onChange={() => handleToggle(c.id, 'inq_manualEntregue')}
-                          label="Manual do Inquilino entregue"
-                        />
-                        <ChecklistItem
-                          checked={c.inq_vistoriaAssinada}
-                          onChange={() => handleToggle(c.id, 'inq_vistoriaAssinada')}
-                          label="Termo de vistoria assinado"
-                        />
-                        <ChecklistItem
-                          checked={c.inq_seguroIncendio}
-                          onChange={() => handleToggle(c.id, 'inq_seguroIncendio')}
-                          label="Apólice de Seguro Incêndio"
-                        />
+                      <div className="space-y-2">
+                        {renderOldItem(c.inq_manualEntregue, 'inq_manualEntregue', 'Manual do Inquilino')}
+                        {renderOldItem(c.inq_vistoriaAssinada, 'inq_vistoriaAssinada', 'Vistoria Assinada')}
+                        {renderOldItem(c.inq_seguroIncendio, 'inq_seguroIncendio', 'Seguro Incêndio')}
+                        {c.docsExtras.filter(d => d.categoria === 'Locatário').map(renderExtraItem)}
                       </div>
                     </div>
+
+                    {/* Locador */}
+                    <div>
+                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                        <span className="h-2 w-2 rounded-full bg-brand-navy" />
+                        Locador / Proprietário
+                      </h4>
+                      <div className="space-y-2">
+                        {renderOldItem(c.prop_contratoEnviado, 'prop_contratoEnviado', 'Contrato de Locação')}
+                        {renderOldItem(c.prop_vistoriaEnviada, 'prop_vistoriaEnviada', 'Vistoria Enviada')}
+                        {c.docsExtras.filter(d => d.categoria === 'Locador').map(renderExtraItem)}
+                      </div>
+                    </div>
+                    
+                    {/* Imóvel & Outros */}
+                    <div>
+                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                        <span className="h-2 w-2 rounded-full bg-secondary" />
+                        Imóvel / Outros
+                      </h4>
+                      <div className="space-y-2">
+                        {c.docsExtras.filter(d => d.categoria === 'Imóvel' || d.categoria === 'Outros').map(renderExtraItem)}
+                        
+                        <div className="mt-4 border border-dashed border-border rounded-xl p-4 bg-muted/20">
+                          <h5 className="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
+                            <Plus className="h-4 w-4" /> Adicionar Documento
+                          </h5>
+                          <div className="space-y-2.5">
+                            <input 
+                              type="text" 
+                              placeholder="Nome do documento..."
+                              value={newDocForm[c.id]?.nome || ''}
+                              onChange={e => setNewDocForm(prev => ({ ...prev, [c.id]: { ...prev[c.id], nome: e.target.value, categoria: prev[c.id]?.categoria || 'Locatário' } }))}
+                              className="w-full text-sm rounded-lg border border-input bg-card px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                            />
+                            <div className="flex gap-2">
+                              <select 
+                                value={newDocForm[c.id]?.categoria || 'Locatário'}
+                                onChange={e => setNewDocForm(prev => ({ ...prev, [c.id]: { ...prev[c.id], categoria: e.target.value as any, nome: prev[c.id]?.nome || '' } }))}
+                                className="w-full text-sm rounded-lg border border-input bg-card px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                              >
+                                <option value="Locatário">Locatário</option>
+                                <option value="Locador">Locador</option>
+                                <option value="Imóvel">Imóvel</option>
+                                <option value="Outros">Outros</option>
+                              </select>
+                              <button 
+                                onClick={() => handleAddExtra(c.id)}
+                                className="shrink-0 bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
+                              >
+                                Adicionar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
               )
@@ -246,3 +433,4 @@ export default function Documentos() {
     </div>
   )
 }
+

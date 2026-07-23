@@ -5,13 +5,28 @@ export interface Cadastro {
   nomeProp: string;
   telProp: string;
   niverProp: string; // format: DD/MM
+  emailProp?: string;
   nomeInq: string;
   telInq: string;
   niverInq: string; // format: DD/MM
+  emailInq?: string;
   inicioContrato: string;
   fimContrato: string;
   corretor: string;
   diaVencimento: number;
+  enderecoImovel?: string;
+  tipoImovel?: string;
+  valorAluguel?: number;
+  comissao?: number;
+  status?: 'Ativo' | 'Encerrado' | 'Renovado';
+}
+
+export interface DocumentoExtra {
+  id: string;
+  nome: string;
+  categoria: 'Locatário' | 'Locador' | 'Imóvel' | 'Outros';
+  isFeito: boolean;
+  pendencia: string;
 }
 
 export interface ChecklistDocs {
@@ -22,6 +37,7 @@ export interface ChecklistDocs {
   inq_manualEntregue: boolean;
   inq_vistoriaAssinada: boolean;
   inq_seguroIncendio: boolean;
+  documentos_json?: string;
 }
 
 export type TipoTarefa = 'Aniversário' | 'Boleto 5 dias' | 'Boleto 1 dia' | 'Boleto Hoje';

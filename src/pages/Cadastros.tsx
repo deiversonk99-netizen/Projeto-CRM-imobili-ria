@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import { db } from '../store'
 import type { Cadastro } from '../types'
-import { Save, Loader2, CheckCircle2, FileSignature, UserRound, KeyRound, Search, PlusCircle, Pencil, Trash2 } from 'lucide-react'
+import { Save, Loader2, CheckCircle2, FileSignature, UserRound, KeyRound, Search, PlusCircle, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
 import { isValidDateDDMM, isValidPhone } from '../utils/validations'
@@ -42,13 +42,20 @@ export default function Cadastros() {
     nomeProp: '',
     telProp: '',
     niverProp: '',
+    emailProp: '',
     nomeInq: '',
     telInq: '',
     niverInq: '',
+    emailInq: '',
     inicioContrato: '',
     fimContrato: '',
     corretor: '',
     diaVencimento: 1,
+    enderecoImovel: '',
+    tipoImovel: '',
+    valorAluguel: 0,
+    comissao: 0,
+    status: 'Ativo',
   })
 
   const filteredCadastros = useMemo(() => {
@@ -66,15 +73,48 @@ export default function Cadastros() {
       nomeProp: cadastro.nomeProp,
       telProp: cadastro.telProp,
       niverProp: cadastro.niverProp,
+      emailProp: cadastro.emailProp || '',
       nomeInq: cadastro.nomeInq,
       telInq: cadastro.telInq,
       niverInq: cadastro.niverInq,
+      emailInq: cadastro.emailInq || '',
       inicioContrato: cadastro.inicioContrato.split('T')[0],
       fimContrato: cadastro.fimContrato.split('T')[0],
       corretor: cadastro.corretor,
       diaVencimento: cadastro.diaVencimento,
+      enderecoImovel: cadastro.enderecoImovel || '',
+      tipoImovel: cadastro.tipoImovel || '',
+      valorAluguel: cadastro.valorAluguel || 0,
+      comissao: cadastro.comissao || 0,
+      status: cadastro.status || 'Ativo',
     })
     setView('form')
+  }
+
+  const handleRenew = (cadastro: Cadastro) => {
+    setEditingId(null) // It will be created as a new record
+    setFormData({
+      contrato: `${cadastro.contrato}-REN`,
+      nomeProp: cadastro.nomeProp,
+      telProp: cadastro.telProp,
+      niverProp: cadastro.niverProp,
+      emailProp: cadastro.emailProp || '',
+      nomeInq: cadastro.nomeInq,
+      telInq: cadastro.telInq,
+      niverInq: cadastro.niverInq,
+      emailInq: cadastro.emailInq || '',
+      inicioContrato: cadastro.fimContrato.split('T')[0], // start from previous end
+      fimContrato: '', // require new end date
+      corretor: cadastro.corretor,
+      diaVencimento: cadastro.diaVencimento,
+      enderecoImovel: cadastro.enderecoImovel || '',
+      tipoImovel: cadastro.tipoImovel || '',
+      valorAluguel: cadastro.valorAluguel || 0,
+      comissao: cadastro.comissao || 0,
+      status: 'Ativo',
+    })
+    setView('form')
+    addToast('Preencha os dados da renovação.', 'success')
   }
 
   const handleDelete = async () => {
@@ -105,23 +145,36 @@ export default function Cadastros() {
       nomeProp: '',
       telProp: '',
       niverProp: '',
+      emailProp: '',
       nomeInq: '',
       telInq: '',
       niverInq: '',
+      emailInq: '',
       inicioContrato: '',
       fimContrato: '',
       corretor: '',
       diaVencimento: 1,
+      enderecoImovel: '',
+      tipoImovel: '',
+      valorAluguel: 0,
+      comissao: 0,
+      status: 'Ativo',
     })
     setView('form')
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === 'diaVencimento' ? parseInt(value) || 1 : value,
-    }))
+    setFormData((prev) => {
+      let parsedValue: string | number = value;
+      if (name === 'diaVencimento') parsedValue = parseInt(value) || 1;
+      if (name === 'valorAluguel' || name === 'comissao') parsedValue = parseFloat(value) || 0;
+      
+      return {
+        ...prev,
+        [name]: parsedValue,
+      }
+    })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -228,6 +281,13 @@ export default function Cadastros() {
                     <td className="px-6 py-4">{cad.nomeInq}</td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => handleRenew(cad)}
+                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-blue-100 hover:text-blue-600"
+                          title="Renovar Contrato"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </button>
                         <button
                           onClick={() => handleEdit(cad)}
                           className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
@@ -384,6 +444,20 @@ export default function Cadastros() {
               />
             </div>
             <div>
+              <label htmlFor="emailProp" className={labelClass}>
+                E-mail (opcional)
+              </label>
+              <input
+                id="emailProp"
+                type="email"
+                name="emailProp"
+                value={formData.emailProp || ''}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+            <div>
               <label htmlFor="telProp" className={labelClass}>
                 WhatsApp
               </label>
@@ -435,6 +509,20 @@ export default function Cadastros() {
               />
             </div>
             <div>
+              <label htmlFor="emailInq" className={labelClass}>
+                E-mail (opcional)
+              </label>
+              <input
+                id="emailInq"
+                type="email"
+                name="emailInq"
+                value={formData.emailInq || ''}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+            <div>
               <label htmlFor="telInq" className={labelClass}>
                 WhatsApp
               </label>
@@ -463,6 +551,95 @@ export default function Cadastros() {
                 placeholder="DD/MM"
                 className={inputClass}
               />
+            </div>
+          </div>
+        </section>
+
+        {/* Imóvel */}
+        <section>
+          <SectionTitle icon={FileSignature} title="Imóvel & Financeiro" />
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <label htmlFor="enderecoImovel" className={labelClass}>
+                Endereço do Imóvel
+              </label>
+              <input
+                id="enderecoImovel"
+                type="text"
+                name="enderecoImovel"
+                value={formData.enderecoImovel || ''}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder="Rua, número, bairro, cidade"
+              />
+            </div>
+            <div>
+              <label htmlFor="tipoImovel" className={labelClass}>
+                Tipo de Imóvel
+              </label>
+              <select
+                id="tipoImovel"
+                name="tipoImovel"
+                value={formData.tipoImovel || ''}
+                onChange={handleChange}
+                className={inputClass}
+              >
+                <option value="">Selecione...</option>
+                <option value="Casa">Casa</option>
+                <option value="Apartamento">Apartamento</option>
+                <option value="Comercial">Comercial</option>
+                <option value="Terreno">Terreno</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="valorAluguel" className={labelClass}>
+                Valor do Aluguel (R$)
+              </label>
+              <input
+                id="valorAluguel"
+                type="number"
+                step="0.01"
+                min="0"
+                name="valorAluguel"
+                value={formData.valorAluguel || ''}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label htmlFor="comissao" className={labelClass}>
+                Comissão (%)
+              </label>
+              <input
+                id="comissao"
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                name="comissao"
+                value={formData.comissao || ''}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder="Ex: 10"
+              />
+            </div>
+            <div>
+              <label htmlFor="status" className={labelClass}>
+                Status do Contrato
+              </label>
+              <select
+                id="status"
+                name="status"
+                value={formData.status || 'Ativo'}
+                onChange={handleChange}
+                className={inputClass}
+              >
+                <option value="Ativo">Ativo</option>
+                <option value="Encerrado">Encerrado</option>
+                <option value="Renovado">Renovado</option>
+              </select>
             </div>
           </div>
         </section>

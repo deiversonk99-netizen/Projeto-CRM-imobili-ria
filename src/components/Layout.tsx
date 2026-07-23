@@ -9,17 +9,21 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { id: 'cadastro', label: 'Cadastros', icon: PlusCircle },
+  { id: 'resumo', label: 'Resumo', icon: FileText },
+  { id: 'cadastro', label: 'Contratos / Cadastros', icon: PlusCircle },
   { id: 'aniversarios', label: 'Aniversários', icon: Calendar },
+  { id: 'renovacoes', label: 'Renovações (60d)', icon: Calendar },
   { id: 'documentos', label: 'Checklist Docs', icon: FileCheck },
-  { id: 'boletos', label: 'Envio de Boletos', icon: FileText },
+  { id: 'boletos', label: 'Financeiro / Boletos', icon: FileText },
 ];
 
 const pageTitles: Record<string, string> = {
-  cadastro: 'Cadastros',
+  resumo: 'Dashboard',
+  cadastro: 'Gestão de Contratos',
   aniversarios: 'Aniversários',
+  renovacoes: 'Renovações de Contrato',
   documentos: 'Checklist de Documentos',
-  boletos: 'Envio de Boletos',
+  boletos: 'Financeiro e Boletos',
 };
 
 function Brand() {

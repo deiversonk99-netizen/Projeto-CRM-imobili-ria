@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import { checkBoletoWarning, getWhatsappLink } from '../utils/dates'
-import { FileText, MessageCircle, CheckCircle } from 'lucide-react'
+import { FileText, MessageCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
+import { ConfirmModal } from '../components/ui/ConfirmModal'
 
 interface BoletoItem {
   id: string
@@ -13,7 +14,7 @@ interface BoletoItem {
   nomeInq: string
   nomeProp: string
   telefone: string
-  tipoAviso: '5_dias' | '1_dia' | 'hoje'
+  tipoAviso: '5_dias' | '1_dia' | 'hoje' | 'atrasado'
   diaVencimento: number
   isFeito: boolean
 }
@@ -22,7 +23,13 @@ export default function Boletos() {
   const { cadastros, tarefas, refreshData } = useData()
   const [boletos, setBoletos] = useState<BoletoItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [processingId, setProcessingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'pendentes' | 'concluidos'>('pendentes')
+  const [modal, setModal] = useState<{ isOpen: boolean; item: BoletoItem | null; action: 'marcar' | 'desfazer' }>({
+    isOpen: false,
+    item: null,
+    action: 'marcar'
+  })
 
   // Formato: YYYY-MM
   const currentMonthRef = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
@@ -39,7 +46,7 @@ export default function Boletos() {
     cadastros.forEach((c) => {
       const aviso = checkBoletoWarning(c.diaVencimento)
       if (aviso) {
-        const tipoStr = aviso === '5_dias' ? 'Boleto 5 dias' : aviso === '1_dia' ? 'Boleto 1 dia' : 'Boleto Hoje'
+        const tipoStr = aviso === '5_dias' ? 'Boleto 5 dias' : aviso === '1_dia' ? 'Boleto 1 dia' : aviso === 'atrasado' ? 'Boleto Atrasado' : 'Boleto Hoje'
         result.push({
           id: c.id,
           contrato: c.contrato,
@@ -64,37 +71,36 @@ export default function Boletos() {
     }
   }, [cadastros, tarefas])
 
-  const handleMarcarFeito = async (item: BoletoItem) => {
-    if (!window.confirm(`Deseja realmente marcar o aviso de boleto para o contrato ${item.contrato} como feito?`)) return;
-    
-    const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : item.tipoAviso === '1_dia' ? 'Boleto 1 dia' : 'Boleto Hoje'
-    try {
-      await db.saveTarefa({
-        contrato: item.contrato,
-        tipo: tipoStr as any,
-        usuario: 'Sistema',
-        referencia: currentMonthRef,
-      })
-      await refreshData()
-      addToast('Aviso de boleto marcado como feito!', 'success')
-    } catch (error) {
-      addToast('Erro ao marcar aviso de boleto.', 'error')
-    }
-  }
+  const confirmAction = async () => {
+    const { item, action } = modal
+    if (!item) return
 
-  const handleDesfazer = async (item: BoletoItem) => {
-    if (!window.confirm(`Deseja desmarcar o aviso de boleto do contrato ${item.contrato}?`)) return;
+    setModal({ ...modal, isOpen: false })
+    setProcessingId(item.id)
+    const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : item.tipoAviso === '1_dia' ? 'Boleto 1 dia' : item.tipoAviso === 'atrasado' ? 'Boleto Atrasado' : 'Boleto Hoje'
 
-    const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : item.tipoAviso === '1_dia' ? 'Boleto 1 dia' : 'Boleto Hoje'
     try {
-      const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
-      if (task) {
-         await db.deleteTarefa(task.idTarefa)
-         await refreshData()
-         addToast('Ação desfeita com sucesso!', 'success')
+      if (action === 'marcar') {
+        await db.saveTarefa({
+          contrato: item.contrato,
+          tipo: tipoStr as any,
+          usuario: 'Sistema',
+          referencia: currentMonthRef,
+        })
+        await refreshData()
+        addToast('Aviso de boleto marcado como feito!', 'success')
+      } else {
+        const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
+        if (task) {
+           await db.deleteTarefa(task.idTarefa)
+           await refreshData()
+           addToast('Ação desfeita com sucesso!', 'success')
+        }
       }
     } catch (error) {
-      addToast('Erro ao desfazer ação.', 'error')
+      addToast(`Erro ao ${action === 'marcar' ? 'marcar' : 'desfazer'} aviso de boleto.`, 'error')
+    } finally {
+      setProcessingId(null)
     }
   }
 
@@ -105,6 +111,7 @@ export default function Boletos() {
   const cincoDias = currentList.filter((b) => b.tipoAviso === '5_dias')
   const umDia = currentList.filter((b) => b.tipoAviso === '1_dia')
   const hoje = currentList.filter((b) => b.tipoAviso === 'hoje')
+  const atrasados = currentList.filter((b) => b.tipoAviso === 'atrasado')
 
   const renderList = (lista: BoletoItem[], title: string, dotClass: string, textClass: string) => (
     <div className="mb-8 last:mb-0">
@@ -122,6 +129,7 @@ export default function Boletos() {
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
           {lista.map((item) => {
             const text = `Olá ${item.nomeInq}, tudo bem? O vencimento do seu aluguel (Contrato ${item.contrato}) está próximo (Dia ${item.diaVencimento}). O boleto já está disponível!`
+            const isProcessing = processingId === item.id
 
             return (
               <li
@@ -150,20 +158,22 @@ export default function Boletos() {
                   </a>
                   {!item.isFeito ? (
                     <button
-                      onClick={() => handleMarcarFeito(item)}
-                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+                      onClick={() => setModal({ isOpen: true, item, action: 'marcar' })}
+                      disabled={isProcessing}
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center"
                     >
-                      <CheckCircle className="h-4 w-4" />
-                      Feito
+                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                      {isProcessing ? 'Salvando...' : 'Feito'}
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleDesfazer(item)}
-                      className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600"
+                      onClick={() => setModal({ isOpen: true, item, action: 'desfazer' })}
+                      disabled={isProcessing}
+                      className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center"
                       title="Desfazer"
                     >
-                      <CheckCircle className="h-4 w-4" />
-                      Concluído
+                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <CheckCircle className="h-4 w-4" />}
+                      {isProcessing ? 'Aguarde...' : 'Concluído'}
                     </button>
                   )}
                 </div>
@@ -177,6 +187,20 @@ export default function Boletos() {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <ConfirmModal
+        isOpen={modal.isOpen}
+        title={modal.action === 'marcar' ? 'Marcar como Feito' : 'Desfazer Ação'}
+        message={
+          modal.action === 'marcar'
+            ? `Deseja realmente marcar o aviso de boleto para o contrato ${modal.item?.contrato} como feito?`
+            : `Deseja desfazer a marcação do aviso para o contrato ${modal.item?.contrato}?`
+        }
+        confirmText={modal.action === 'marcar' ? 'Sim, marcar' : 'Sim, desfazer'}
+        intent={modal.action === 'marcar' ? 'success' : 'warning'}
+        onConfirm={confirmAction}
+        onCancel={() => setModal({ ...modal, isOpen: false })}
+      />
+
       <div className="border-b border-border bg-muted/50 px-6 py-5">
         <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
@@ -219,6 +243,7 @@ export default function Boletos() {
           <div className="flex justify-center p-8 text-muted-foreground">Nenhum boleto {tab === 'pendentes' ? 'pendente' : 'concluído'}.</div>
         ) : (
           <>
+            {renderList(atrasados, 'Atrasados', 'bg-red-700', 'text-red-700')}
             {renderList(hoje, 'Vence Hoje', 'bg-red-500', 'text-red-500')}
             {renderList(umDia, 'Avisar Amanhã (Falta 1 dia)', 'bg-warning-foreground', 'text-warning-foreground')}
             {renderList(cincoDias, 'Avisar em 5 dias', 'bg-brand-navy', 'text-brand-navy')}

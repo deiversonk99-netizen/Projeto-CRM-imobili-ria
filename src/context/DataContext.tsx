@@ -7,6 +7,7 @@ interface DataContextProps {
   checklists: ChecklistDocs[];
   tarefas: TarefaConcluida[];
   loading: boolean;
+  error: string | null;
   refreshData: () => Promise<void>;
 }
 
@@ -17,9 +18,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [checklists, setChecklists] = useState<ChecklistDocs[]>([]);
   const [tarefas, setTarefas] = useState<TarefaConcluida[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refreshData = async () => {
     try {
+      setError(null);
       const [cads, checks, tars] = await Promise.all([
         db.getCadastros(),
         db.getChecklists(),
@@ -28,8 +31,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCadastros(cads || []);
       setChecklists(checks || []);
       setTarefas(tars || []);
-    } catch (error) {
-      console.error('Error fetching data', error);
+    } catch (err: any) {
+      console.error('Error fetching data', err);
+      setError(err.message || 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');
     }
   };
 
@@ -38,7 +42,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{ cadastros, checklists, tarefas, loading, refreshData }}>
+    <DataContext.Provider value={{ cadastros, checklists, tarefas, loading, error, refreshData }}>
       {children}
     </DataContext.Provider>
   );

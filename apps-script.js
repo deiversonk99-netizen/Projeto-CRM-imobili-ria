@@ -5,11 +5,13 @@ function setupSpreadsheet() {
     'Cadastros': [
       'id', 'dataHora', 'contrato', 'nomeProp', 'telProp', 'niverProp',
       'nomeInq', 'telInq', 'niverInq', 'inicioContrato', 'fimContrato',
-      'corretor', 'diaVencimento'
+      'corretor', 'diaVencimento', 'enderecoImovel', 'tipoImovel', 'valorAluguel',
+      'comissao', 'emailProp', 'emailInq', 'status'
     ],
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
-      'inq_manualEntregue', 'inq_vistoriaAssinada', 'inq_seguroIncendio'
+      'inq_manualEntregue', 'inq_vistoriaAssinada', 'inq_seguroIncendio',
+      'documentos_json'
     ],
     'Tarefas': [
       'idTarefa', 'dataConclusao', 'contrato', 'tipo', 'usuario', 'referencia'
@@ -53,7 +55,9 @@ function doGet(e) {
 }
 
 function handleRequest(body) {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(30000); // Wait up to 30 seconds for other processes
     const data = JSON.parse(body);
     const action = data.action;
     
@@ -63,11 +67,19 @@ function handleRequest(body) {
       return updateChecklist(data.data);
     } else if (action === 'saveTarefa') {
       return saveTarefa(data.data);
+    } else if (action === 'updateCadastro') {
+      return updateCadastro(data.data);
+    } else if (action === 'deleteCadastro') {
+      return deleteCadastro(data.id);
+    } else if (action === 'deleteTarefa') {
+      return deleteTarefa(data.id);
     }
     
     return { error: 'Action not handled in POST' };
   } catch (error) {
     return { error: error.toString() };
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -105,16 +117,71 @@ function saveCadastro(cadastroData) {
     id, dataHora, cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
     cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
     cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
-    cadastroData.diaVencimento
+    cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
+    cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
+    cadastroData.emailInq || '', cadastroData.status || 'Ativo'
   ]);
   
   // Auto-create checklist
   const checklistSheet = ss.getSheetByName('Checklists');
   checklistSheet.appendRow([
-    id, cadastroData.contrato, false, false, false, false, false
+    id, cadastroData.contrato, false, false, false, false, false, '[]'
   ]);
   
   return { success: true, id: id };
+}
+
+function updateCadastro(cadastroData) {
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Cadastros');
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === cadastroData.id) {
+      const rowIndex = i + 1;
+      sheet.getRange(rowIndex, 3, 1, 18).setValues([[
+        cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
+        cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
+        cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
+        cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
+        cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
+        cadastroData.emailInq || '', cadastroData.status || 'Ativo'
+      ]]);
+      return { success: true };
+    }
+  }
+  return { error: 'Cadastro not found' };
+}
+
+function deleteCadastro(id) {
+  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
+  
+  // Delete from Cadastros
+  const sheet = ss.getSheetByName('Cadastros');
+  const data = sheet.getDataRange().getValues();
+  let found = false;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) {
+      sheet.deleteRow(i + 1);
+      found = true;
+      break;
+    }
+  }
+  
+  // Delete from Checklists
+  const checklistSheet = ss.getSheetByName('Checklists');
+  const checkData = checklistSheet.getDataRange().getValues();
+  for (let i = 1; i < checkData.length; i++) {
+    if (checkData[i][0] === id) {
+      checklistSheet.deleteRow(i + 1);
+      break;
+    }
+  }
+  
+  if (found) {
+    return { success: true };
+  } else {
+    return { error: 'Cadastro not found' };
+  }
 }
 
 function updateChecklist(checklistData) {
@@ -124,12 +191,13 @@ function updateChecklist(checklistData) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === checklistData.id) {
       const rowIndex = i + 1;
-      sheet.getRange(rowIndex, 3, 1, 5).setValues([[
+      sheet.getRange(rowIndex, 3, 1, 6).setValues([[
         checklistData.prop_contratoEnviado,
         checklistData.prop_vistoriaEnviada,
         checklistData.inq_manualEntregue,
         checklistData.inq_vistoriaAssinada,
-        checklistData.inq_seguroIncendio
+        checklistData.inq_seguroIncendio,
+        checklistData.documentos_json || '[]'
       ]]);
       return { success: true };
     }
@@ -148,6 +216,19 @@ function saveTarefa(tarefaData) {
   ]);
   
   return { success: true, id: idTarefa };
+}
+
+function deleteTarefa(id) {
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Tarefas');
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) {
+      sheet.deleteRow(i + 1);
+      return { success: true };
+    }
+  }
+  return { error: 'Tarefa not found' };
 }
 
 function jsonResponse(data) {

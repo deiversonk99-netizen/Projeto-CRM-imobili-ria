@@ -9,6 +9,8 @@ interface DataContextProps {
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
+  addTarefaLocally: (tarefa: TarefaConcluida) => void;
+  removeTarefaLocally: (idTarefa: string) => void;
 }
 
 const DataContext = createContext<DataContextProps | undefined>(undefined);
@@ -19,6 +21,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [tarefas, setTarefas] = useState<TarefaConcluida[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const addTarefaLocally = (tarefa: TarefaConcluida) => {
+    setTarefas((prev) => [...prev, tarefa]);
+  };
+
+  const removeTarefaLocally = (idTarefa: string) => {
+    setTarefas((prev) => prev.filter((t) => t.idTarefa !== idTarefa));
+  };
 
   const refreshData = async () => {
     try {
@@ -42,7 +52,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{ cadastros, checklists, tarefas, loading, error, refreshData }}>
+    <DataContext.Provider value={{ cadastros, checklists, tarefas, loading, error, refreshData, addTarefaLocally, removeTarefaLocally }}>
       {children}
     </DataContext.Provider>
   );

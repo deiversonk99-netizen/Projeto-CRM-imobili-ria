@@ -253,66 +253,66 @@ export default function Documentos() {
               const renderOldItem = (checked: boolean, field: keyof ChecklistDocs, label: string) => {
                 if (onlyPending && checked) return null;
                 return (
-                  <div key={field} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand-navy/30">
-                    <label className="group flex cursor-pointer items-start gap-3">
+                  <li key={field} className="flex items-center justify-between py-3">
+                    <label className="group flex cursor-pointer items-center gap-3 overflow-hidden">
                       <input type="checkbox" checked={checked} onChange={() => handleToggleOld(c.id, field)} className={checkboxClass} />
-                      <span className={`text-sm font-medium transition-colors ${checked ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                      <span className={`text-sm font-medium truncate transition-colors ${checked ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                         {label}
                       </span>
                     </label>
-                    <div className="flex items-center gap-1.5 sm:ml-4 pl-7 sm:pl-0">
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
                       {checked ? (
-                        <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Correto
+                        <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                          <CheckCircle2 className="h-3 w-3" /> Correto
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
-                          <AlertCircle className="h-3.5 w-3.5" /> Pendente
+                        <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+                          <AlertCircle className="h-3 w-3" /> Pendente
                         </span>
                       )}
                     </div>
-                  </div>
+                  </li>
                 )
               }
 
               const renderExtraItem = (doc: DocumentoExtra) => {
                 if (onlyPending && doc.isFeito) return null;
                 return (
-                  <div key={doc.id} className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-card shadow-sm transition-colors hover:border-brand-navy/30">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <label className="group flex cursor-pointer items-start gap-3">
+                  <li key={doc.id} className="flex flex-col py-3">
+                    <div className="flex items-center justify-between">
+                      <label className="group flex cursor-pointer items-center gap-3 overflow-hidden">
                         <input type="checkbox" checked={doc.isFeito} onChange={() => handleToggleExtra(c.id, doc.id)} className={checkboxClass} />
-                        <span className={`text-sm font-medium transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                        <span className={`text-sm font-medium truncate transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                           {doc.nome}
                         </span>
                       </label>
-                      <div className="flex items-center justify-between sm:justify-end gap-3 pl-7 sm:pl-0">
+                      <div className="flex items-center justify-end gap-2 shrink-0 ml-2">
                         {doc.isFeito ? (
-                          <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-1 text-xs font-semibold text-green-700">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Entregue
+                          <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                            <CheckCircle2 className="h-3 w-3" /> Entregue
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
-                            <AlertCircle className="h-3.5 w-3.5" /> Pendente
+                          <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+                            <AlertCircle className="h-3 w-3" /> Pendente
                           </span>
                         )}
-                        <button onClick={() => handleDeleteExtra(c.id, doc.id)} className="text-muted-foreground hover:text-red-500 transition-colors" title="Remover documento">
+                        <button onClick={() => handleDeleteExtra(c.id, doc.id)} className="text-muted-foreground hover:text-red-500 transition-colors shrink-0 p-1 rounded-md hover:bg-red-50" title="Remover documento">
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </div>
                     {!doc.isFeito && (
-                      <div className="pl-7 mt-1">
+                      <div className="pl-7 mt-2 w-full">
                         <input 
                           type="text" 
                           value={doc.pendencia || ''}
                           onChange={(e) => handlePendenciaChange(c.id, doc.id, e.target.value)}
                           placeholder="Detalhes da pendência (opcional)..." 
-                          className="w-full text-sm rounded-lg border border-input bg-muted/50 px-3 py-1.5 focus:bg-card focus:outline-none focus:ring-2 focus:ring-ring/30 transition-all"
+                          className="w-full text-xs rounded-lg border border-input bg-muted/50 px-3 py-1.5 focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
                         />
                       </div>
                     )}
-                  </div>
+                  </li>
                 )
               }
 
@@ -358,12 +358,12 @@ export default function Documentos() {
                         <span className="h-2 w-2 rounded-full bg-primary" />
                         Locatário / Inquilino
                       </h4>
-                      <div className="space-y-2">
+                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
                         {renderOldItem(c.inq_manualEntregue, 'inq_manualEntregue', 'Manual do Inquilino')}
                         {renderOldItem(c.inq_vistoriaAssinada, 'inq_vistoriaAssinada', 'Vistoria Assinada')}
                         {renderOldItem(c.inq_seguroIncendio, 'inq_seguroIncendio', 'Seguro Incêndio')}
                         {c.docsExtras.filter(d => d.categoria === 'Locatário').map(renderExtraItem)}
-                      </div>
+                      </ul>
                     </div>
 
                     {/* Locador */}
@@ -372,11 +372,11 @@ export default function Documentos() {
                         <span className="h-2 w-2 rounded-full bg-brand-navy" />
                         Locador / Proprietário
                       </h4>
-                      <div className="space-y-2">
+                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
                         {renderOldItem(c.prop_contratoEnviado, 'prop_contratoEnviado', 'Contrato de Locação')}
                         {renderOldItem(c.prop_vistoriaEnviada, 'prop_vistoriaEnviada', 'Vistoria Enviada')}
                         {c.docsExtras.filter(d => d.categoria === 'Locador').map(renderExtraItem)}
-                      </div>
+                      </ul>
                     </div>
                     
                     {/* Imóvel & Outros */}
@@ -385,9 +385,9 @@ export default function Documentos() {
                         <span className="h-2 w-2 rounded-full bg-secondary" />
                         Imóvel / Outros
                       </h4>
-                      <div className="space-y-2">
+                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
                         {c.docsExtras.filter(d => d.categoria === 'Imóvel' || d.categoria === 'Outros').map(renderExtraItem)}
-                        
+                      </ul>
                         <div className="mt-4 border border-dashed border-border rounded-xl p-4 bg-muted/20">
                           <h5 className="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
                             <Plus className="h-4 w-4" /> Adicionar Documento
@@ -420,7 +420,6 @@ export default function Documentos() {
                             </div>
                           </div>
                         </div>
-                      </div>
                     </div>
 
                   </div>

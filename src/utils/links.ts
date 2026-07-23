@@ -1,5 +1,5 @@
 export function generateWhatsAppLink(phone: string, text: string): string {
-  const cleanPhone = phone.replace(/\D/g, '');
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
   return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(text)}`;
 }
 

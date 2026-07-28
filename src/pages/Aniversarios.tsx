@@ -184,7 +184,7 @@ export default function Aniversarios() {
         ) : (
           <ul className="divide-y divide-border">
             {currentList.map((item) => {
-              const text = `Olá ${item.nome}! A IMG Imóveis Mogi Guaçu deseja um Feliz Aniversário! 🎉`
+              const text = `Olá ${item.nome}, tudo bem? A equipe da IMG Imóveis Mogi Guaçu deseja a você um feliz aniversário! 🥳🎉 Que o seu dia seja repleto de alegria e coisas boas!`
               const isToday = item.diasAte === 0
               const isProcessing = processingId === item.id
 

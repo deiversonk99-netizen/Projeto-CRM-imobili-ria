@@ -121,60 +121,56 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
   const StatCard = ({ icon: Icon, title, value, color, onClick }: any) => (
     <div 
       onClick={onClick}
-      className="bg-card rounded-2xl p-6 border border-border shadow-sm flex items-start gap-4 cursor-pointer hover:border-primary/50 transition-colors"
+      className="bg-card rounded-2xl p-4 xl:p-6 border border-border shadow-sm flex xl:flex-col 2xl:flex-row items-center xl:items-start 2xl:items-center gap-4 cursor-pointer hover:border-primary/50 transition-colors"
     >
-      <div className={`p-3 rounded-xl ${color}`}>
-        <Icon className="w-6 h-6" />
+      <div className={`p-3 rounded-xl shrink-0 ${color}`}>
+        <Icon className="w-6 h-6 xl:w-8 xl:h-8 2xl:w-6 2xl:h-6" />
       </div>
-      <div>
-        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-        <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
+      <div className="flex-1 min-w-0">
+        <h3 className="text-sm font-medium text-muted-foreground truncate">{title}</h3>
+        <div className="mt-1 flex items-baseline">{value}</div>
       </div>
     </div>
   );
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <StatCard 
-            icon={FileSignature} 
-            title="Contratos Ativos" 
-            value={activeContractsCount} 
-            color="bg-primary/10 text-primary" 
-            onClick={() => setTab('cadastro')}
-          />
-          <StatCard 
-            icon={FileCheck} 
-            title="Pendências (Docs)" 
-            value={pendingDocsCount} 
-            color="bg-orange-500/10 text-orange-600" 
-            onClick={() => setTab('documentos')}
-          />
-          <StatCard 
-            icon={AlertCircle} 
-            title="Vencendo em 60 dias" 
-            value={expiringSoonCount} 
-            color="bg-red-500/10 text-red-600" 
-            onClick={() => setTab('renovacoes')}
-          />
-        </div>
-        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <StatCard 
-            icon={Wallet} 
-            title="Total Alugado" 
-            value={<span className="text-xl md:text-2xl">{financialStats.aluguelFormatted}</span>} 
-            color="bg-blue-500/10 text-blue-600" 
-            onClick={() => {}}
-          />
-          <StatCard 
-            icon={TrendingUp} 
-            title="Receita Estimada" 
-            value={<span className="text-xl md:text-2xl text-green-600">{financialStats.comissaoFormatted}</span>} 
-            color="bg-green-500/10 text-green-600" 
-            onClick={() => {}}
-          />
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <StatCard 
+          icon={FileSignature} 
+          title="Contratos Ativos" 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate">{activeContractsCount}</span>} 
+          color="bg-primary/10 text-primary" 
+          onClick={() => setTab('cadastro')}
+        />
+        <StatCard 
+          icon={FileCheck} 
+          title="Pendências (Docs)" 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate">{pendingDocsCount}</span>} 
+          color="bg-orange-500/10 text-orange-600" 
+          onClick={() => setTab('documentos')}
+        />
+        <StatCard 
+          icon={AlertCircle} 
+          title="Vencendo em 60 dias" 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate">{expiringSoonCount}</span>} 
+          color="bg-red-500/10 text-red-600" 
+          onClick={() => setTab('renovacoes')}
+        />
+        <StatCard 
+          icon={Wallet} 
+          title="Total Alugado" 
+          value={<span className="text-xl xl:text-2xl font-bold text-foreground truncate">{financialStats.aluguelFormatted}</span>} 
+          color="bg-blue-500/10 text-blue-600" 
+          onClick={() => {}}
+        />
+        <StatCard 
+          icon={TrendingUp} 
+          title="Receita Estimada" 
+          value={<span className="text-xl xl:text-2xl font-bold text-green-600 truncate">{financialStats.comissaoFormatted}</span>} 
+          color="bg-green-500/10 text-green-600" 
+          onClick={() => {}}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -226,12 +222,12 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
             {upcomingBoletos.length > 0 ? (
               <ul className="divide-y divide-border">
                 {upcomingBoletos.map((b, i) => (
-                  <li key={i} className="py-3 flex justify-between items-center">
-                    <div>
-                      <p className="font-medium text-sm text-foreground">{b.inq}</p>
-                      <p className="text-xs text-muted-foreground">Contrato {b.contrato}</p>
+                  <li key={i} className="py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm text-foreground truncate">{b.inq}</p>
+                      <p className="text-xs text-muted-foreground truncate">Contrato {b.contrato}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="sm:text-right shrink-0">
                       <span className={`text-xs font-semibold px-2 py-1 rounded-md ${
                         b.aviso === 'atrasado' || b.aviso === 'hoje' ? 'bg-red-100 text-red-700' : 'bg-brand-navy/10 text-brand-navy'
                       }`}>
@@ -259,12 +255,12 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
             {upcomingBirthdays.length > 0 ? (
               <ul className="divide-y divide-border">
                 {upcomingBirthdays.map((b, i) => (
-                  <li key={i} className="py-3 flex justify-between items-center">
-                    <div>
-                      <p className="font-medium text-sm text-foreground">{b.nome}</p>
-                      <p className="text-xs text-muted-foreground">{b.tipo} - Contrato {b.contrato}</p>
+                  <li key={i} className="py-3 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm text-foreground truncate">{b.nome}</p>
+                      <p className="text-xs text-muted-foreground truncate">{b.tipo} - Contrato {b.contrato}</p>
                     </div>
-                    <div className="text-right text-xs font-medium text-muted-foreground">
+                    <div className="sm:text-right text-xs font-medium text-muted-foreground shrink-0">
                       {b.dias === 0 ? <span className="text-primary font-bold">Hoje</span> : `Em ${b.dias} dias`}
                     </div>
                   </li>

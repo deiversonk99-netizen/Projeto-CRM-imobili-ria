@@ -41,8 +41,8 @@ export default function Renovacoes() {
             const date = new Date(c.fimContrato);
             const daysLeft = Math.ceil((date.getTime() - new Date().getTime()) / (1000 * 3600 * 24));
             
-            const msgProp = `Olá ${c.nomeProp}, lembramos que o contrato ${c.contrato} vence em ${date.toLocaleDateString('pt-BR')}. Gostaríamos de conversar sobre a renovação.`;
-            const msgInq = `Olá ${c.nomeInq}, seu contrato ${c.contrato} vence em ${date.toLocaleDateString('pt-BR')}. Gostaríamos de conversar sobre a renovação.`;
+            const msgProp = `Olá ${c.nomeProp}, tudo bem? Passando para lembrar que o contrato de locação (${c.contrato}) vence no dia ${date.toLocaleDateString('pt-BR')}. Gostaríamos de conversar sobre a renovação.`;
+            const msgInq = `Olá ${c.nomeInq}, tudo bem? O seu contrato de locação (${c.contrato}) vence no dia ${date.toLocaleDateString('pt-BR')}. Gostaríamos de conversar sobre a renovação.`;
 
             return (
               <div key={c.id} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 items-center hover:bg-muted/30 transition-colors">

@@ -129,7 +129,16 @@ export default function Boletos() {
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
           {lista.map((item) => {
-            const text = `Olá ${item.nomeInq}, tudo bem? O vencimento do seu aluguel (Contrato ${item.contrato}) está próximo (Dia ${item.diaVencimento}). O boleto já está disponível!`
+            let text = ''
+            if (item.tipoAviso === '5_dias') {
+              text = `Olá ${item.nomeInq}, tudo bem? Passando para avisar que o boleto do seu aluguel (Contrato ${item.contrato}), com vencimento para o dia ${item.diaVencimento}, já está disponível para pagamento.`
+            } else if (item.tipoAviso === '1_dia') {
+              text = `Olá ${item.nomeInq}, tudo bem? Passando para lembrar que o vencimento do seu aluguel (Contrato ${item.contrato}) é amanhã, dia ${item.diaVencimento}.`
+            } else if (item.tipoAviso === 'hoje') {
+              text = `Olá ${item.nomeInq}, tudo bem? Passando para lembrar que o vencimento do seu aluguel (Contrato ${item.contrato}) é hoje, dia ${item.diaVencimento}.`
+            } else {
+              text = `Olá ${item.nomeInq}, tudo bem? Consta em nosso sistema que o boleto referente ao aluguel (Contrato ${item.contrato}) com vencimento no dia ${item.diaVencimento} consta como em aberto. Por favor, desconsidere esta mensagem caso o pagamento já tenha sido realizado.`
+            }
             const isProcessing = processingId === item.id
 
             return (

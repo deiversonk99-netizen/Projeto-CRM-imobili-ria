@@ -40,7 +40,7 @@ export interface ChecklistDocs {
   documentos_json?: string;
 }
 
-export type TipoTarefa = 'Aniversário' | 'Boleto 5 dias' | 'Boleto 1 dia' | 'Boleto Hoje';
+export type TipoTarefa = 'Aniversário' | 'Boleto 5 dias' | 'Boleto 1 dia' | 'Boleto Hoje' | 'Boleto Atrasado';
 
 export interface TarefaConcluida {
   idTarefa: string;

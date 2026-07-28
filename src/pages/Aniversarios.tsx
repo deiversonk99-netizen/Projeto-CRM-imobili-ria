@@ -20,7 +20,7 @@ interface BirthdayItem {
 }
 
 export default function Aniversarios() {
-  const { cadastros, tarefas, addTarefaLocally, removeTarefaLocally } = useData()
+  const { cadastros, tarefas, refreshData } = useData()
   const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([])
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -98,16 +98,14 @@ export default function Aniversarios() {
           usuario: item.tipo,
           referencia: currentYear,
         };
-        const tempId = `temp-${Date.now()}`;
-        addTarefaLocally({ ...novaTarefa, idTarefa: tempId, dataConclusao: new Date().toISOString() });
-        
         await db.saveTarefa(novaTarefa)
+        await refreshData()
         addToast('Aniversário marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === 'Aniversário' && t.referencia === currentYear && t.contrato === item.contrato && t.usuario === item.tipo)
         if (task) {
-           removeTarefaLocally(task.idTarefa);
            await db.deleteTarefa(task.idTarefa)
+           await refreshData()
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }

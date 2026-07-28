@@ -169,9 +169,9 @@ export default function Documentos() {
     const cad = cadastros[c.id]
     if (!cad) return false
     
-    const matchesSearch = c.contrato.toLowerCase().includes(term) ||
-      cad.nomeProp.toLowerCase().includes(term) ||
-      cad.nomeInq.toLowerCase().includes(term)
+    const matchesSearch = String(c.contrato || '').toLowerCase().includes(term) ||
+      String(cad.nomeProp || '').toLowerCase().includes(term) ||
+      String(cad.nomeInq || '').toLowerCase().includes(term)
       
     if (!matchesSearch) return false
 

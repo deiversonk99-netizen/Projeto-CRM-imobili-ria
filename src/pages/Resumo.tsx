@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
-import { FileSignature, AlertCircle, FileCheck, Calendar as CalendarIcon, ArrowRight, UserRound, FileText } from 'lucide-react';
+import { FileSignature, AlertCircle, FileCheck, Calendar as CalendarIcon, ArrowRight, UserRound, FileText, Wallet, TrendingUp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { checkBoletoWarning, checkBirthday } from '../utils/dates';
 
@@ -24,6 +24,23 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
 
   const activeContractsCount = useMemo(() => {
     return cadastros.filter(c => c.status === 'Ativo' || !c.status).length;
+  }, [cadastros]);
+
+  const financialStats = useMemo(() => {
+    let totalAluguel = 0;
+    let totalComissao = 0;
+    
+    cadastros.forEach(c => {
+      if (c.status === 'Ativo' || !c.status) {
+        totalAluguel += Number(c.valorAluguel) || 0;
+        totalComissao += Number(c.comissao) || 0;
+      }
+    });
+
+    return {
+      aluguelFormatted: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalAluguel),
+      comissaoFormatted: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalComissao),
+    };
   }, [cadastros]);
 
   const pendingDocsCount = useMemo(() => {
@@ -118,28 +135,46 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard 
-          icon={FileSignature} 
-          title="Contratos Ativos" 
-          value={activeContractsCount} 
-          color="bg-primary/10 text-primary" 
-          onClick={() => setTab('cadastro')}
-        />
-        <StatCard 
-          icon={FileCheck} 
-          title="Pendências (Docs)" 
-          value={pendingDocsCount} 
-          color="bg-orange-500/10 text-orange-600" 
-          onClick={() => setTab('documentos')}
-        />
-        <StatCard 
-          icon={AlertCircle} 
-          title="Vencendo em 60 dias" 
-          value={expiringSoonCount} 
-          color="bg-red-500/10 text-red-600" 
-          onClick={() => setTab('renovacoes')}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="md:col-span-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatCard 
+            icon={FileSignature} 
+            title="Contratos Ativos" 
+            value={activeContractsCount} 
+            color="bg-primary/10 text-primary" 
+            onClick={() => setTab('cadastro')}
+          />
+          <StatCard 
+            icon={FileCheck} 
+            title="Pendências (Docs)" 
+            value={pendingDocsCount} 
+            color="bg-orange-500/10 text-orange-600" 
+            onClick={() => setTab('documentos')}
+          />
+          <StatCard 
+            icon={AlertCircle} 
+            title="Vencendo em 60 dias" 
+            value={expiringSoonCount} 
+            color="bg-red-500/10 text-red-600" 
+            onClick={() => setTab('renovacoes')}
+          />
+        </div>
+        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <StatCard 
+            icon={Wallet} 
+            title="Total Alugado" 
+            value={<span className="text-xl md:text-2xl">{financialStats.aluguelFormatted}</span>} 
+            color="bg-blue-500/10 text-blue-600" 
+            onClick={() => {}}
+          />
+          <StatCard 
+            icon={TrendingUp} 
+            title="Receita Estimada" 
+            value={<span className="text-xl md:text-2xl text-green-600">{financialStats.comissaoFormatted}</span>} 
+            color="bg-green-500/10 text-green-600" 
+            onClick={() => {}}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

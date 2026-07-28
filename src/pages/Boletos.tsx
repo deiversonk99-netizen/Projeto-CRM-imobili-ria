@@ -20,7 +20,7 @@ interface BoletoItem {
 }
 
 export default function Boletos() {
-  const { cadastros, tarefas, addTarefaLocally, removeTarefaLocally } = useData()
+  const { cadastros, tarefas, refreshData } = useData()
   const [boletos, setBoletos] = useState<BoletoItem[]>([])
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -87,16 +87,14 @@ export default function Boletos() {
           usuario: 'Sistema',
           referencia: currentMonthRef,
         };
-        const tempId = `temp-${Date.now()}`;
-        addTarefaLocally({ ...novaTarefa, idTarefa: tempId, dataConclusao: new Date().toISOString() });
-        
         await db.saveTarefa(novaTarefa)
+        await refreshData()
         addToast('Aviso de boleto marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
         if (task) {
-           removeTarefaLocally(task.idTarefa);
            await db.deleteTarefa(task.idTarefa)
+           await refreshData()
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }

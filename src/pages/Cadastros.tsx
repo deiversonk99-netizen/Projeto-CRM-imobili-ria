@@ -59,10 +59,11 @@ export default function Cadastros() {
   })
 
   const filteredCadastros = useMemo(() => {
+    const term = searchTerm.toLowerCase()
     return cadastros.filter(c => 
-      c.contrato.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.nomeProp.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.nomeInq.toLowerCase().includes(searchTerm.toLowerCase())
+      String(c.contrato || '').toLowerCase().includes(term) ||
+      String(c.nomeProp || '').toLowerCase().includes(term) ||
+      String(c.nomeInq || '').toLowerCase().includes(term)
     )
   }, [cadastros, searchTerm])
 

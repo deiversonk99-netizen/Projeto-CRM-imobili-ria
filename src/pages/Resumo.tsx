@@ -121,14 +121,14 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
   const StatCard = ({ icon: Icon, title, value, color, onClick }: any) => (
     <div 
       onClick={onClick}
-      className="bg-card rounded-2xl p-4 xl:p-6 border border-border shadow-sm flex xl:flex-col 2xl:flex-row items-center xl:items-start 2xl:items-center gap-4 cursor-pointer hover:border-primary/50 transition-colors"
+      className="bg-card rounded-2xl p-4 xl:p-6 border border-border shadow-sm flex flex-col sm:flex-row xl:flex-col items-start sm:items-center xl:items-start gap-4 cursor-pointer hover:border-primary/50 transition-colors h-full"
     >
       <div className={`p-3 rounded-xl shrink-0 ${color}`}>
-        <Icon className="w-6 h-6 xl:w-8 xl:h-8 2xl:w-6 2xl:h-6" />
+        <Icon className="w-6 h-6 xl:w-8 xl:h-8" />
       </div>
-      <div className="flex-1 min-w-0">
-        <h3 className="text-sm font-medium text-muted-foreground truncate">{title}</h3>
-        <div className="mt-1 flex items-baseline">{value}</div>
+      <div className="flex-1 min-w-0 w-full">
+        <h3 className="text-sm font-medium text-muted-foreground leading-tight">{title}</h3>
+        <div className="mt-2 flex items-baseline">{value}</div>
       </div>
     </div>
   );
@@ -139,35 +139,35 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
         <StatCard 
           icon={FileSignature} 
           title="Contratos Ativos" 
-          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate">{activeContractsCount}</span>} 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground">{activeContractsCount}</span>} 
           color="bg-primary/10 text-primary" 
           onClick={() => setTab('cadastro')}
         />
         <StatCard 
           icon={FileCheck} 
           title="Pendências (Docs)" 
-          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate">{pendingDocsCount}</span>} 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground">{pendingDocsCount}</span>} 
           color="bg-orange-500/10 text-orange-600" 
           onClick={() => setTab('documentos')}
         />
         <StatCard 
           icon={AlertCircle} 
           title="Vencendo em 60 dias" 
-          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate">{expiringSoonCount}</span>} 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground">{expiringSoonCount}</span>} 
           color="bg-red-500/10 text-red-600" 
           onClick={() => setTab('renovacoes')}
         />
         <StatCard 
           icon={Wallet} 
           title="Total Alugado" 
-          value={<span className="text-xl xl:text-2xl font-bold text-foreground truncate">{financialStats.aluguelFormatted}</span>} 
+          value={<span className="text-xl xl:text-2xl font-bold text-foreground break-all sm:break-normal">{financialStats.aluguelFormatted}</span>} 
           color="bg-blue-500/10 text-blue-600" 
           onClick={() => {}}
         />
         <StatCard 
           icon={TrendingUp} 
           title="Receita Estimada" 
-          value={<span className="text-xl xl:text-2xl font-bold text-green-600 truncate">{financialStats.comissaoFormatted}</span>} 
+          value={<span className="text-xl xl:text-2xl font-bold text-green-600 break-all sm:break-normal">{financialStats.comissaoFormatted}</span>} 
           color="bg-green-500/10 text-green-600" 
           onClick={() => {}}
         />

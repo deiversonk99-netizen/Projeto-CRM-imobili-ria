@@ -88,17 +88,15 @@ export default function Boletos() {
           referencia: currentMonthRef,
         };
         setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: true } : b))
-        const saved = await db.saveTarefa(novaTarefa)
-        if (saved && saved.idTarefa) {
-           addTarefaLocally(saved)
-        }
+        await db.saveTarefa(novaTarefa)
+        await refreshData()
         addToast('Aviso de boleto marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
         if (task) {
            setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: false } : b))
            await db.deleteTarefa(task.idTarefa)
-           removeTarefaLocally(task.idTarefa)
+           await refreshData()
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }

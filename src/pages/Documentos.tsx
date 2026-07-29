@@ -155,6 +155,7 @@ export default function Documentos() {
         documentos_json: JSON.stringify(docsExtras)
       }
       await db.updateChecklist(dataToSave)
+      await refreshData()
       addToast('Checklist salvo com sucesso!', 'success')
     } catch (error) {
       addToast('Erro ao salvar checklist', 'error')

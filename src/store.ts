@@ -63,9 +63,8 @@ export const db = {
     return data;
   },
 
-  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<TarefaConcluida> => {
-    const res = await fetchGAS({ action: 'saveTarefa', data: tarefa });
-    return res;
+  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<void> => {
+    await fetchGAS({ action: 'saveTarefa', data: tarefa });
   },
 
   deleteTarefa: async (idTarefa: string): Promise<void> => {

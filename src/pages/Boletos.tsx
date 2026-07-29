@@ -20,7 +20,7 @@ interface BoletoItem {
 }
 
 export default function Boletos() {
-  const { cadastros, tarefas, refreshData } = useData()
+  const { cadastros, tarefas, refreshData, addTarefaLocally, removeTarefaLocally } = useData()
   const [boletos, setBoletos] = useState<BoletoItem[]>([])
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -87,19 +87,24 @@ export default function Boletos() {
           usuario: 'Sistema',
           referencia: currentMonthRef,
         };
-        await db.saveTarefa(novaTarefa)
-        await refreshData()
+        setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: true } : b))
+        const saved = await db.saveTarefa(novaTarefa)
+        if (saved && saved.idTarefa) {
+           addTarefaLocally(saved)
+        }
         addToast('Aviso de boleto marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
         if (task) {
+           setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: false } : b))
            await db.deleteTarefa(task.idTarefa)
-           await refreshData()
+           removeTarefaLocally(task.idTarefa)
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }
     } catch (error) {
       addToast(`Erro ao ${action === 'marcar' ? 'marcar' : 'desfazer'} aviso de boleto.`, 'error')
+      await refreshData() // Revert optimistic update on error
     } finally {
       setProcessingId(null)
     }
@@ -170,20 +175,20 @@ export default function Boletos() {
                     <button
                       onClick={() => setModal({ isOpen: true, item, action: 'marcar' })}
                       disabled={isProcessing}
-                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center"
+                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
                     >
-                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                      {isProcessing ? 'Salvando...' : 'Feito'}
+                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
+                      {isProcessing ? 'Salvando' : 'Feito'}
                     </button>
                   ) : (
                     <button
                       onClick={() => setModal({ isOpen: true, item, action: 'desfazer' })}
                       disabled={isProcessing}
-                      className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center"
+                      className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
                       title="Desfazer"
                     >
-                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <CheckCircle className="h-4 w-4" />}
-                      {isProcessing ? 'Aguarde...' : 'Concluído'}
+                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
+                      {isProcessing ? 'Aguarde' : 'Concluído'}
                     </button>
                   )}
                 </div>

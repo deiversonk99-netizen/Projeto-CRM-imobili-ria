@@ -24,7 +24,7 @@ async function fetchGAS(payload: any) {
 
 export const db = {
   getCadastros: async (): Promise<Cadastro[]> => {
-    const response = await fetch(`${GAS_URL}?action=getCadastros`);
+    const response = await fetch(`${GAS_URL}?action=getCadastros&t=${Date.now()}`);
     if (!response.ok) throw new Error('Failed to fetch cadastros');
     const data = await response.json();
     if (data.error) throw new Error(data.error);
@@ -44,7 +44,7 @@ export const db = {
   },
 
   getChecklists: async (): Promise<ChecklistDocs[]> => {
-    const response = await fetch(`${GAS_URL}?action=getChecklists`);
+    const response = await fetch(`${GAS_URL}?action=getChecklists&t=${Date.now()}`);
     if (!response.ok) throw new Error('Failed to fetch checklists');
     const data = await response.json();
     if (data.error) throw new Error(data.error);
@@ -56,15 +56,16 @@ export const db = {
   },
 
   getTarefas: async (): Promise<TarefaConcluida[]> => {
-    const response = await fetch(`${GAS_URL}?action=getTarefas`);
+    const response = await fetch(`${GAS_URL}?action=getTarefas&t=${Date.now()}`);
     if (!response.ok) throw new Error('Failed to fetch tarefas');
     const data = await response.json();
     if (data.error) throw new Error(data.error);
     return data;
   },
 
-  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<void> => {
-    await fetchGAS({ action: 'saveTarefa', data: tarefa });
+  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<TarefaConcluida> => {
+    const res = await fetchGAS({ action: 'saveTarefa', data: tarefa });
+    return res;
   },
 
   deleteTarefa: async (idTarefa: string): Promise<void> => {

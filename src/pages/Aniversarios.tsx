@@ -20,7 +20,7 @@ interface BirthdayItem {
 }
 
 export default function Aniversarios() {
-  const { cadastros, tarefas, refreshData } = useData()
+  const { cadastros, tarefas, refreshData, addTarefaLocally, removeTarefaLocally } = useData()
   const [aniversariantes, setAniversariantes] = useState<BirthdayItem[]>([])
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
@@ -98,19 +98,24 @@ export default function Aniversarios() {
           usuario: item.tipo,
           referencia: currentYear,
         };
-        await db.saveTarefa(novaTarefa)
-        await refreshData()
+        setAniversariantes(prev => prev.map(a => a.id === item.id ? { ...a, isFeito: true } : a))
+        const saved = await db.saveTarefa(novaTarefa)
+        if (saved && saved.idTarefa) {
+           addTarefaLocally(saved)
+        }
         addToast('Aniversário marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === 'Aniversário' && t.referencia === currentYear && t.contrato === item.contrato && t.usuario === item.tipo)
         if (task) {
+           setAniversariantes(prev => prev.map(a => a.id === item.id ? { ...a, isFeito: false } : a))
            await db.deleteTarefa(task.idTarefa)
-           await refreshData()
+           removeTarefaLocally(task.idTarefa)
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }
     } catch (error) {
       addToast(`Erro ao ${action === 'marcar' ? 'marcar' : 'desfazer'} ação.`, 'error')
+      await refreshData() // Revert optimistic update on error
     } finally {
       setProcessingId(null)
     }
@@ -227,20 +232,20 @@ export default function Aniversarios() {
                       <button
                         onClick={() => setModal({ isOpen: true, item, action: 'marcar' })}
                         disabled={isProcessing}
-                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[130px] justify-center"
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
                       >
-                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                        {isProcessing ? 'Salvando...' : 'Marcar Feito'}
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
+                        {isProcessing ? 'Salvando' : 'Feito'}
                       </button>
                     ) : (
                       <button
                         onClick={() => setModal({ isOpen: true, item, action: 'desfazer' })}
                         disabled={isProcessing}
-                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 disabled:cursor-not-allowed w-[130px] justify-center"
+                        className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
                         title="Desfazer"
                       >
-                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : <CheckCircle className="h-4 w-4" />}
-                        {isProcessing ? 'Aguarde...' : 'Concluído'}
+                        {isProcessing ? <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
+                        {isProcessing ? 'Aguarde' : 'Concluído'}
                       </button>
                     )}
                   </div>

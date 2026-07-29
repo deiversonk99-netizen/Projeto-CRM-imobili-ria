@@ -93,21 +93,21 @@ export default function Aniversarios() {
     try {
       if (action === 'marcar') {
         const novaTarefa = {
-          contrato: item.contrato,
+          contrato: String(item.contrato),
           tipo: 'Aniversário' as any,
           usuario: item.tipo,
           referencia: currentYear,
         };
         setAniversariantes(prev => prev.map(a => a.id === item.id ? { ...a, isFeito: true } : a))
-        await db.saveTarefa(novaTarefa)
-        await refreshData()
+        const saved = await db.saveTarefa(novaTarefa)
+        addTarefaLocally(saved)
         addToast('Aniversário marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === 'Aniversário' && String(t.referencia) === currentYear && String(t.contrato) === String(item.contrato) && t.usuario === item.tipo)
         if (task) {
            setAniversariantes(prev => prev.map(a => a.id === item.id ? { ...a, isFeito: false } : a))
            await db.deleteTarefa(task.idTarefa)
-           await refreshData()
+           removeTarefaLocally(task.idTarefa)
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }

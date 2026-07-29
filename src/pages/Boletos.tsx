@@ -82,21 +82,21 @@ export default function Boletos() {
     try {
       if (action === 'marcar') {
         const novaTarefa = {
-          contrato: item.contrato,
+          contrato: String(item.contrato),
           tipo: tipoStr as any,
           usuario: 'Sistema',
           referencia: currentMonthRef,
         };
         setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: true } : b))
-        await db.saveTarefa(novaTarefa)
-        await refreshData()
+        const saved = await db.saveTarefa(novaTarefa)
+        addTarefaLocally(saved)
         addToast('Aviso de boleto marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && String(t.contrato) === String(item.contrato))
         if (task) {
            setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: false } : b))
            await db.deleteTarefa(task.idTarefa)
-           await refreshData()
+           removeTarefaLocally(task.idTarefa)
            addToast('Ação desfeita com sucesso!', 'success')
         }
       }

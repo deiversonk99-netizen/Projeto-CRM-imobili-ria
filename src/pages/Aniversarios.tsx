@@ -35,7 +35,7 @@ export default function Aniversarios() {
   const loadData = () => {
     const doneIds = new Set(
       tarefas
-        .filter((t) => t.tipo === 'Aniversário' && t.referencia === currentYear)
+        .filter((t) => t.tipo === 'Aniversário' && String(t.referencia) === currentYear)
         .map((t) => `${t.contrato}-${t.usuario}`),
     )
 
@@ -103,7 +103,7 @@ export default function Aniversarios() {
         await refreshData()
         addToast('Aniversário marcado como feito!', 'success')
       } else {
-        const task = tarefas.find(t => t.tipo === 'Aniversário' && t.referencia === currentYear && t.contrato === item.contrato && t.usuario === item.tipo)
+        const task = tarefas.find(t => t.tipo === 'Aniversário' && String(t.referencia) === currentYear && String(t.contrato) === String(item.contrato) && t.usuario === item.tipo)
         if (task) {
            setAniversariantes(prev => prev.map(a => a.id === item.id ? { ...a, isFeito: false } : a))
            await db.deleteTarefa(task.idTarefa)

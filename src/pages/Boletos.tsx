@@ -92,7 +92,7 @@ export default function Boletos() {
         await refreshData()
         addToast('Aviso de boleto marcado como feito!', 'success')
       } else {
-        const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && t.contrato === item.contrato)
+        const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && String(t.contrato) === String(item.contrato))
         if (task) {
            setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: false } : b))
            await db.deleteTarefa(task.idTarefa)

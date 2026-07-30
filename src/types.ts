@@ -24,7 +24,7 @@ export interface Cadastro {
 export interface DocumentoExtra {
   id: string;
   nome: string;
-  categoria: 'Locatário' | 'Locador' | 'Imóvel' | 'Outros';
+  categoria: 'Locatário' | 'Locador' | 'Imóvel' | 'Contratos' | 'Outros';
   isFeito: boolean;
   pendencia: string;
 }

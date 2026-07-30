@@ -16,18 +16,57 @@ export interface ExtendedChecklist extends ChecklistDocs {
 }
 
 const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
+  const defaultDocs: DocumentoExtra[] = [
+    // LOCADOR
+    { id: uuidv4(), nome: 'CNH (CPF/RG)', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Certidão de Nascimento', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Dados Bancários Proprietário', categoria: 'Locador', isFeito: false, pendencia: '' },
+    
+    // LOCATÁRIO
+    { id: uuidv4(), nome: 'CNH (CPF/RG)', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Certidão de Nascimento', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Comprovante de Renda (excluir se não aplica)', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'SERASA (excluir se não aplica)', categoria: 'Locatário', isFeito: false, pendencia: '' },
+
+    // IMÓVEL
+    { id: uuidv4(), nome: 'Conta Energia', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Conta de Água', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'IPTU', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Matrícula (ficha do imóvel)', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Transferência Energia', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Transferência Água', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+
+    // CONTRATOS
+    { id: uuidv4(), nome: 'Contrato de Locação', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Contrato de Intermediação', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Seguro Incêndio (Proprietário, Inquilino ou Isento)', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Garantia (Seguro Fiança, Fiador, Caução, etc.)', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Termo de Entrega de Chaves', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: uuidv4(), nome: 'Vistoria de Entrada', categoria: 'Contratos', isFeito: false, pendencia: '' }
+  ];
+
   if (!jsonStr || jsonStr === '[]') {
-    return [
-      { id: uuidv4(), nome: 'CNH', categoria: 'Locatário', isFeito: false, pendencia: '' },
-      { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locatário', isFeito: false, pendencia: '' },
-      { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locador', isFeito: false, pendencia: '' },
-      { id: uuidv4(), nome: 'Matrícula', categoria: 'Imóvel', isFeito: false, pendencia: '' }
-    ]
+    return defaultDocs;
   }
+  
   try {
-    return JSON.parse(jsonStr)
+    const parsed = JSON.parse(jsonStr) as DocumentoExtra[];
+    const result = [...parsed];
+    
+    // Adicionar novos documentos padrão que possam estar faltando em checklists antigos
+    defaultDocs.forEach(def => {
+      if (!result.some(r => r.nome === def.nome && r.categoria === def.categoria)) {
+        result.push(def);
+      }
+    });
+    
+    return result;
   } catch (e) {
-    return []
+    return defaultDocs;
   }
 }
 
@@ -80,10 +119,26 @@ export default function Documentos() {
     setChecklists((prev) =>
       prev.map((c) => {
         if (c.id === checklistId) {
-          return {
-            ...c,
-            docsExtras: c.docsExtras.map(d => d.id === docId ? { ...d, isFeito: !d.isFeito } : d)
+          const doc = c.docsExtras.find(d => d.id === docId);
+          if (!doc) return c;
+          
+          let newDocs = c.docsExtras.map(d => d.id === docId ? { ...d, isFeito: !d.isFeito } : d);
+          
+          if (!doc.isFeito && doc.nome.includes('Certidão de Casamento')) {
+            const conjugeName = 'CNH (CPF/RG) Cônjuge';
+            const hasConjuge = newDocs.some(d => d.nome === conjugeName && d.categoria === doc.categoria);
+            if (!hasConjuge) {
+              newDocs.push({
+                id: uuidv4(),
+                nome: conjugeName,
+                categoria: doc.categoria,
+                isFeito: false,
+                pendencia: ''
+              });
+            }
           }
+
+          return { ...c, docsExtras: newDocs };
         }
         return c
       })
@@ -250,43 +305,18 @@ export default function Documentos() {
               const total = oldTotal + extraTotal
               const done = oldDone + extraDone
 
-              const renderOldItem = (checked: boolean, field: keyof ChecklistDocs, label: string) => {
-                if (onlyPending && checked) return null;
-                return (
-                  <li key={field} className="flex items-center justify-between py-3">
-                    <label className="group flex cursor-pointer items-center gap-3 overflow-hidden">
-                      <input type="checkbox" checked={checked} onChange={() => handleToggleOld(c.id, field)} className={checkboxClass} />
-                      <span className={`text-sm font-medium truncate transition-colors ${checked ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
-                        {label}
-                      </span>
-                    </label>
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {checked ? (
-                        <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                          <CheckCircle2 className="h-3 w-3" /> Correto
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
-                          <AlertCircle className="h-3 w-3" /> Pendente
-                        </span>
-                      )}
-                    </div>
-                  </li>
-                )
-              }
-
               const renderExtraItem = (doc: DocumentoExtra) => {
                 if (onlyPending && doc.isFeito) return null;
                 return (
                   <li key={doc.id} className="flex flex-col py-3">
-                    <div className="flex items-center justify-between">
-                      <label className="group flex cursor-pointer items-center gap-3 overflow-hidden">
-                        <input type="checkbox" checked={doc.isFeito} onChange={() => handleToggleExtra(c.id, doc.id)} className={checkboxClass} />
-                        <span className={`text-sm font-medium truncate transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <label className="group flex cursor-pointer items-start gap-3 flex-1 min-w-0">
+                        <input type="checkbox" checked={doc.isFeito} onChange={() => handleToggleExtra(c.id, doc.id)} className={checkboxClass + ' mt-0.5 shrink-0'} />
+                        <span className={`text-sm font-medium transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'} break-words`}>
                           {doc.nome}
                         </span>
                       </label>
-                      <div className="flex items-center justify-end gap-2 shrink-0 ml-2">
+                      <div className="flex items-center justify-end gap-2 shrink-0 ml-auto pl-7 sm:pl-0">
                         {doc.isFeito ? (
                           <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
                             <CheckCircle2 className="h-3 w-3" /> Entregue
@@ -301,17 +331,24 @@ export default function Documentos() {
                         </button>
                       </div>
                     </div>
-                    {!doc.isFeito && (
-                      <div className="pl-7 mt-2 w-full">
+                    <div className="pl-7 mt-2 w-full">
+                      {doc.nome.includes('Dados Bancários') ? (
+                        <textarea 
+                          value={doc.pendencia || ''}
+                          onChange={(e) => handlePendenciaChange(c.id, doc.id, e.target.value)}
+                          placeholder="Informe Agência, Conta, Banco, CPF/CNPJ, Titular..." 
+                          className="w-full text-xs rounded-lg border border-input bg-muted/50 px-3 py-2 focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all min-h-[80px] resize-y"
+                        />
+                      ) : (
                         <input 
                           type="text" 
                           value={doc.pendencia || ''}
                           onChange={(e) => handlePendenciaChange(c.id, doc.id, e.target.value)}
-                          placeholder="Detalhes da pendência (opcional)..." 
+                          placeholder="Observações ou pendências (opcional)..." 
                           className="w-full text-xs rounded-lg border border-input bg-muted/50 px-3 py-1.5 focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
                         />
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </li>
                 )
               }
@@ -351,42 +388,48 @@ export default function Documentos() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-                    {/* Locatário */}
-                    <div>
-                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                        <span className="h-2 w-2 rounded-full bg-primary" />
-                        Locatário / Inquilino
-                      </h4>
-                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {renderOldItem(c.inq_manualEntregue, 'inq_manualEntregue', 'Manual do Inquilino')}
-                        {renderOldItem(c.inq_vistoriaAssinada, 'inq_vistoriaAssinada', 'Vistoria Assinada')}
-                        {renderOldItem(c.inq_seguroIncendio, 'inq_seguroIncendio', 'Seguro Incêndio')}
-                        {c.docsExtras.filter(d => d.categoria === 'Locatário').map(renderExtraItem)}
-                      </ul>
-                    </div>
-
+                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-4">
                     {/* Locador */}
                     <div>
                       <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
                         <span className="h-2 w-2 rounded-full bg-brand-navy" />
-                        Locador / Proprietário
+                        Documentos Locador (proprietário)
                       </h4>
                       <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {renderOldItem(c.prop_contratoEnviado, 'prop_contratoEnviado', 'Contrato de Locação')}
-                        {renderOldItem(c.prop_vistoriaEnviada, 'prop_vistoriaEnviada', 'Vistoria Enviada')}
                         {c.docsExtras.filter(d => d.categoria === 'Locador').map(renderExtraItem)}
                       </ul>
                     </div>
+
+                    {/* Locatário */}
+                    <div>
+                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                        <span className="h-2 w-2 rounded-full bg-primary" />
+                        Documentos Locatário (inquilino)
+                      </h4>
+                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
+                        {c.docsExtras.filter(d => d.categoria === 'Locatário').map(renderExtraItem)}
+                      </ul>
+                    </div>
                     
-                    {/* Imóvel & Outros */}
+                    {/* Imóvel */}
                     <div>
                       <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
                         <span className="h-2 w-2 rounded-full bg-secondary" />
-                        Imóvel / Outros
+                        Documentos Imóvel
                       </h4>
                       <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {c.docsExtras.filter(d => d.categoria === 'Imóvel' || d.categoria === 'Outros').map(renderExtraItem)}
+                        {c.docsExtras.filter(d => d.categoria === 'Imóvel').map(renderExtraItem)}
+                      </ul>
+                    </div>
+
+                    {/* Contratos & Outros */}
+                    <div>
+                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
+                        <span className="h-2 w-2 rounded-full bg-orange-400" />
+                        Contratos
+                      </h4>
+                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
+                        {c.docsExtras.filter(d => d.categoria === 'Contratos' || d.categoria === 'Outros').map(renderExtraItem)}
                       </ul>
                         <div className="mt-4 border border-dashed border-border rounded-xl p-4 bg-muted/20">
                           <h5 className="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
@@ -409,6 +452,7 @@ export default function Documentos() {
                                 <option value="Locatário">Locatário</option>
                                 <option value="Locador">Locador</option>
                                 <option value="Imóvel">Imóvel</option>
+                                <option value="Contratos">Contratos</option>
                                 <option value="Outros">Outros</option>
                               </select>
                               <button 

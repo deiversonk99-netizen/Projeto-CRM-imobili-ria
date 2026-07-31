@@ -10,3 +10,24 @@ export const isValidPhone = (phone: string) => {
   const clean = phone.replace(/\D/g, '');
   return clean.length >= 10 && clean.length <= 11;
 };
+
+export const maskDateDDMM = (value: string) => {
+  let v = value.replace(/\D/g, '');
+  if (v.length > 4) v = v.slice(0, 4);
+  if (v.length > 2) {
+    v = `${v.slice(0, 2)}/${v.slice(2)}`;
+  }
+  return v;
+};
+
+export const maskPhone = (value: string) => {
+  let v = value.replace(/\D/g, '');
+  if (v.length > 11) v = v.slice(0, 11);
+  if (v.length > 2) {
+    v = `(${v.slice(0, 2)}) ${v.slice(2)}`;
+  }
+  if (v.length > 10) {
+    v = `${v.slice(0, 10)}-${v.slice(10)}`;
+  }
+  return v;
+};

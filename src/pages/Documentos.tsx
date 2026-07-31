@@ -8,6 +8,8 @@ import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
 import { v4 as uuidv4 } from 'uuid'
 
+import { ChecklistCard } from '../components/ChecklistCard'
+
 const checkboxClass =
   'mt-0.5 h-4.5 w-4.5 shrink-0 rounded border-input text-primary accent-[#76b82a] focus:ring-2 focus:ring-ring/40'
 
@@ -77,11 +79,7 @@ export default function Documentos() {
   const [cadastros, setCadastros] = useState<Record<string, Cadastro>>({})
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [savingId, setSavingId] = useState<string | null>(null)
   const [onlyPending, setOnlyPending] = useState(false)
-
-  // State for new custom document form
-  const [newDocForm, setNewDocForm] = useState<{ [key: string]: { nome: string, categoria: DocumentoExtra['categoria'] } }>({})
 
   const loadData = () => {
     const cadMap: Record<string, Cadastro> = {}
@@ -104,119 +102,10 @@ export default function Documentos() {
     }
   }, [contextCadastros, contextChecklists])
 
-  const handleToggleOld = (id: string, field: keyof ChecklistDocs) => {
-    setChecklists((prev) =>
-      prev.map((c) => {
-        if (c.id === id) {
-          return { ...c, [field]: !c[field] }
-        }
-        return c
-      }),
+  const handleChecklistUpdate = (updatedChecklist: ExtendedChecklist) => {
+    setChecklists((prev) => 
+      prev.map(c => c.id === updatedChecklist.id ? updatedChecklist : c)
     )
-  }
-
-  const handleToggleExtra = (checklistId: string, docId: string) => {
-    setChecklists((prev) =>
-      prev.map((c) => {
-        if (c.id === checklistId) {
-          const doc = c.docsExtras.find(d => d.id === docId);
-          if (!doc) return c;
-          
-          let newDocs = c.docsExtras.map(d => d.id === docId ? { ...d, isFeito: !d.isFeito } : d);
-          
-          if (!doc.isFeito && doc.nome.includes('Certidão de Casamento')) {
-            const conjugeName = 'CNH (CPF/RG) Cônjuge';
-            const hasConjuge = newDocs.some(d => d.nome === conjugeName && d.categoria === doc.categoria);
-            if (!hasConjuge) {
-              newDocs.push({
-                id: uuidv4(),
-                nome: conjugeName,
-                categoria: doc.categoria,
-                isFeito: false,
-                pendencia: ''
-              });
-            }
-          }
-
-          return { ...c, docsExtras: newDocs };
-        }
-        return c
-      })
-    )
-  }
-
-  const handlePendenciaChange = (checklistId: string, docId: string, value: string) => {
-    setChecklists((prev) =>
-      prev.map((c) => {
-        if (c.id === checklistId) {
-          return {
-            ...c,
-            docsExtras: c.docsExtras.map(d => d.id === docId ? { ...d, pendencia: value } : d)
-          }
-        }
-        return c
-      })
-    )
-  }
-
-  const handleDeleteExtra = (checklistId: string, docId: string) => {
-    setChecklists((prev) =>
-      prev.map((c) => {
-        if (c.id === checklistId) {
-          return {
-            ...c,
-            docsExtras: c.docsExtras.filter(d => d.id !== docId)
-          }
-        }
-        return c
-      })
-    )
-  }
-
-  const handleAddExtra = (checklistId: string) => {
-    const form = newDocForm[checklistId]
-    if (!form || !form.nome.trim()) return
-
-    setChecklists((prev) =>
-      prev.map((c) => {
-        if (c.id === checklistId) {
-          return {
-            ...c,
-            docsExtras: [
-              ...c.docsExtras,
-              {
-                id: uuidv4(),
-                nome: form.nome.trim(),
-                categoria: form.categoria,
-                isFeito: false,
-                pendencia: ''
-              }
-            ]
-          }
-        }
-        return c
-      })
-    )
-    
-    setNewDocForm(prev => ({ ...prev, [checklistId]: { nome: '', categoria: 'Locatário' } }))
-  }
-
-  const handleSave = async (checklist: ExtendedChecklist) => {
-    setSavingId(checklist.id)
-    try {
-      const { docsExtras, ...baseChecklist } = checklist
-      const dataToSave: ChecklistDocs = {
-        ...baseChecklist,
-        documentos_json: JSON.stringify(docsExtras)
-      }
-      await db.updateChecklist(dataToSave)
-      await refreshData()
-      addToast('Checklist salvo com sucesso!', 'success')
-    } catch (error) {
-      addToast('Erro ao salvar checklist', 'error')
-    } finally {
-      setSavingId(null)
-    }
   }
 
   const filtered = checklists.filter((c) => {
@@ -231,9 +120,8 @@ export default function Documentos() {
     if (!matchesSearch) return false
 
     if (onlyPending) {
-      const hasOldPending = !(c.prop_contratoEnviado && c.prop_vistoriaEnviada && c.inq_manualEntregue && c.inq_vistoriaAssinada && c.inq_seguroIncendio)
       const hasExtraPending = c.docsExtras.some(d => !d.isFeito)
-      if (!hasOldPending && !hasExtraPending) return false
+      if (!hasExtraPending) return false
     }
 
     return true
@@ -286,190 +174,15 @@ export default function Documentos() {
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {filtered.map((c) => {
-              const cad = cadastros[c.id]
-              const isSaving = savingId === c.id
-              
-              const oldTotal = 5
-              const oldDone = [
-                c.prop_contratoEnviado,
-                c.prop_vistoriaEnviada,
-                c.inq_manualEntregue,
-                c.inq_vistoriaAssinada,
-                c.inq_seguroIncendio,
-              ].filter(Boolean).length
-
-              const extraTotal = c.docsExtras.length
-              const extraDone = c.docsExtras.filter(d => d.isFeito).length
-              
-              const total = oldTotal + extraTotal
-              const done = oldDone + extraDone
-
-              const renderExtraItem = (doc: DocumentoExtra) => {
-                if (onlyPending && doc.isFeito) return null;
-                return (
-                  <li key={doc.id} className="flex flex-col py-3">
-                    <div className="flex items-start justify-between gap-2 flex-wrap">
-                      <label className="group flex cursor-pointer items-start gap-3 flex-1 min-w-0">
-                        <input type="checkbox" checked={doc.isFeito} onChange={() => handleToggleExtra(c.id, doc.id)} className={checkboxClass + ' mt-0.5 shrink-0'} />
-                        <span className={`text-sm font-medium transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'} break-words`}>
-                          {doc.nome}
-                        </span>
-                      </label>
-                      <div className="flex items-center justify-end gap-2 shrink-0 ml-auto pl-7 sm:pl-0">
-                        {doc.isFeito ? (
-                          <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                            <CheckCircle2 className="h-3 w-3" /> Entregue
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
-                            <AlertCircle className="h-3 w-3" /> Pendente
-                          </span>
-                        )}
-                        <button onClick={() => handleDeleteExtra(c.id, doc.id)} className="text-muted-foreground hover:text-red-500 transition-colors shrink-0 p-1 rounded-md hover:bg-red-50" title="Remover documento">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="pl-7 mt-2 w-full">
-                      {doc.nome.includes('Dados Bancários') ? (
-                        <textarea 
-                          value={doc.pendencia || ''}
-                          onChange={(e) => handlePendenciaChange(c.id, doc.id, e.target.value)}
-                          placeholder="Informe Agência, Conta, Banco, CPF/CNPJ, Titular..." 
-                          className="w-full text-xs rounded-lg border border-input bg-muted/50 px-3 py-2 focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all min-h-[80px] resize-y"
-                        />
-                      ) : (
-                        <input 
-                          type="text" 
-                          value={doc.pendencia || ''}
-                          onChange={(e) => handlePendenciaChange(c.id, doc.id, e.target.value)}
-                          placeholder="Observações ou pendências (opcional)..." 
-                          className="w-full text-xs rounded-lg border border-input bg-muted/50 px-3 py-1.5 focus:bg-card focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
-                        />
-                      )}
-                    </div>
-                  </li>
-                )
-              }
-
-              return (
-                <div key={c.id} className="p-6">
-                  <div className="mb-5 flex flex-col justify-between gap-3 border-b border-border pb-5 lg:flex-row lg:items-center">
-                    <div>
-                      <div className="mb-1 flex flex-wrap items-center gap-2.5">
-                        <span className="rounded-full bg-brand-navy px-2.5 py-0.5 text-xs font-semibold text-brand-navy-foreground">
-                          Contrato: {c.contrato}
-                        </span>
-                        <span
-                          className={`text-xs font-semibold ${
-                            done === total ? 'text-primary' : 'text-muted-foreground'
-                          }`}
-                        >
-                          {done}/{total} concluídos
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-2">
-                        <span className="font-medium text-foreground">Proprietário:</span> {cad.nomeProp} {' | '}
-                        <span className="font-medium text-foreground">Inquilino:</span> {cad.nomeInq}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => handleSave(c)}
-                      disabled={isSaving}
-                      className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-navy px-5 py-2.5 text-sm font-semibold text-brand-navy-foreground shadow-sm transition-all hover:brightness-125 disabled:opacity-70"
-                    >
-                      {isSaving ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                      Salvar Alterações
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-4">
-                    {/* Locador */}
-                    <div>
-                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                        <span className="h-2 w-2 rounded-full bg-brand-navy" />
-                        Documentos Locador (proprietário)
-                      </h4>
-                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {c.docsExtras.filter(d => d.categoria === 'Locador').map(renderExtraItem)}
-                      </ul>
-                    </div>
-
-                    {/* Locatário */}
-                    <div>
-                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                        <span className="h-2 w-2 rounded-full bg-primary" />
-                        Documentos Locatário (inquilino)
-                      </h4>
-                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {c.docsExtras.filter(d => d.categoria === 'Locatário').map(renderExtraItem)}
-                      </ul>
-                    </div>
-                    
-                    {/* Imóvel */}
-                    <div>
-                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                        <span className="h-2 w-2 rounded-full bg-secondary" />
-                        Documentos Imóvel
-                      </h4>
-                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {c.docsExtras.filter(d => d.categoria === 'Imóvel').map(renderExtraItem)}
-                      </ul>
-                    </div>
-
-                    {/* Contratos & Outros */}
-                    <div>
-                      <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold text-brand-navy">
-                        <span className="h-2 w-2 rounded-full bg-orange-400" />
-                        Contratos
-                      </h4>
-                      <ul className="divide-y divide-border border border-border rounded-xl px-4 bg-card shadow-sm">
-                        {c.docsExtras.filter(d => d.categoria === 'Contratos' || d.categoria === 'Outros').map(renderExtraItem)}
-                      </ul>
-                        <div className="mt-4 border border-dashed border-border rounded-xl p-4 bg-muted/20">
-                          <h5 className="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
-                            <Plus className="h-4 w-4" /> Adicionar Documento
-                          </h5>
-                          <div className="space-y-2.5">
-                            <input 
-                              type="text" 
-                              placeholder="Nome do documento..."
-                              value={newDocForm[c.id]?.nome || ''}
-                              onChange={e => setNewDocForm(prev => ({ ...prev, [c.id]: { ...prev[c.id], nome: e.target.value, categoria: prev[c.id]?.categoria || 'Locatário' } }))}
-                              className="w-full text-sm rounded-lg border border-input bg-card px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-                            />
-                            <div className="flex gap-2">
-                              <select 
-                                value={newDocForm[c.id]?.categoria || 'Locatário'}
-                                onChange={e => setNewDocForm(prev => ({ ...prev, [c.id]: { ...prev[c.id], categoria: e.target.value as any, nome: prev[c.id]?.nome || '' } }))}
-                                className="w-full text-sm rounded-lg border border-input bg-card px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-                              >
-                                <option value="Locatário">Locatário</option>
-                                <option value="Locador">Locador</option>
-                                <option value="Imóvel">Imóvel</option>
-                                <option value="Contratos">Contratos</option>
-                                <option value="Outros">Outros</option>
-                              </select>
-                              <button 
-                                onClick={() => handleAddExtra(c.id)}
-                                className="shrink-0 bg-primary text-primary-foreground rounded-lg px-3 py-2 text-sm font-medium hover:bg-primary/90 transition-colors"
-                              >
-                                Adicionar
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                    </div>
-
-                  </div>
-                </div>
-              )
-            })}
+            {filtered.map((c) => (
+              <ChecklistCard 
+                key={c.id} 
+                initialChecklist={c} 
+                cadastro={cadastros[c.id]} 
+                onlyPending={onlyPending}
+                onUpdate={handleChecklistUpdate}
+              />
+            ))}
           </div>
         )}
       </div>

@@ -3,10 +3,11 @@
 import React, { useState, useMemo } from 'react'
 import { db } from '../store'
 import type { Cadastro } from '../types'
-import { Save, Loader2, CheckCircle2, FileSignature, UserRound, KeyRound, Search, PlusCircle, Pencil, Trash2, RefreshCw } from 'lucide-react'
+import { Save, Loader2, MessageCircle, Home, BadgeDollarSign, AlertCircle, CheckCircle2, FileSignature, UserRound, KeyRound, Search, PlusCircle, Pencil, Trash2, RefreshCw } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
-import { isValidDateDDMM, isValidPhone } from '../utils/validations'
+import { isValidDateDDMM, isValidPhone, maskDateDDMM, maskPhone } from '../utils/validations'
+import { getWhatsappLink } from '../utils/dates'
 import { ConfirmModal } from '../components/ui/ConfirmModal'
 
 const inputClass =
@@ -33,6 +34,7 @@ export default function Cadastros() {
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [tabStatus, setTabStatus] = useState('Todos')
   
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [cadastroToDelete, setCadastroToDelete] = useState<string | null>(null)
@@ -60,12 +62,25 @@ export default function Cadastros() {
 
   const filteredCadastros = useMemo(() => {
     const term = searchTerm.toLowerCase()
-    return cadastros.filter(c => 
-      String(c.contrato || '').toLowerCase().includes(term) ||
-      String(c.nomeProp || '').toLowerCase().includes(term) ||
-      String(c.nomeInq || '').toLowerCase().includes(term)
-    )
-  }, [cadastros, searchTerm])
+    return cadastros.filter(c => {
+      const matchSearch = String(c.contrato || '').toLowerCase().includes(term) ||
+                          String(c.nomeProp || '').toLowerCase().includes(term) ||
+                          String(c.nomeInq || '').toLowerCase().includes(term);
+      const matchStatus = tabStatus === 'Todos' || c.status === tabStatus;
+      return matchSearch && matchStatus;
+    })
+  }, [cadastros, searchTerm, tabStatus])
+
+  const dashboardStats = useMemo(() => {
+    const ativos = cadastros.filter(c => c.status === 'Ativo');
+    const valorTotalAtivos = ativos.reduce((acc, c) => acc + (c.valorAluguel || 0), 0);
+    const totalEncerrados = cadastros.filter(c => c.status === 'Encerrado').length;
+    return { 
+      ativos: ativos.length, 
+      valorTotalAtivos,
+      totalEncerrados
+    }
+  }, [cadastros]);
 
   const handleEdit = (cadastro: Cadastro) => {
     setEditingId(cadastro.id)
@@ -171,6 +186,13 @@ export default function Cadastros() {
       if (name === 'diaVencimento') parsedValue = parseInt(value) || 1;
       if (name === 'valorAluguel' || name === 'comissao') parsedValue = parseFloat(value) || 0;
       
+      if (name === 'niverProp' || name === 'niverInq') {
+        parsedValue = maskDateDDMM(value);
+      }
+      if (name === 'telProp' || name === 'telInq') {
+        parsedValue = maskPhone(value);
+      }
+      
       return {
         ...prev,
         [name]: parsedValue,
@@ -227,100 +249,195 @@ export default function Cadastros() {
 
   if (view === 'list') {
     return (
-      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-        <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/50 px-6 py-5 sm:flex-row sm:items-center">
-          <div>
-            <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-                <FileSignature className="h-4.5 w-4.5 text-secondary-foreground" />
-              </span>
-              Cadastros e Contratos
-            </h2>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Buscar contrato ou nome..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30 sm:w-64"
-              />
+      <div className="space-y-6">
+        {/* Dashboard Resumo */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Contratos Ativos</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">{dashboardStats.ativos}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <FileSignature className="h-6 w-6" />
+              </div>
             </div>
-            <button
-              onClick={handleNew}
-              className="flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:brightness-105"
-            >
-              <PlusCircle className="h-4 w-4" />
-              Novo Cadastro
-            </button>
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Receita Estimada (Ativos)</p>
+                <p className="mt-2 text-3xl font-bold text-brand-navy">
+                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(dashboardStats.valorTotalAtivos)}
+                </p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-navy/10 text-brand-navy">
+                <BadgeDollarSign className="h-6 w-6" />
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Contratos Encerrados</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">{dashboardStats.totalEncerrados}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          {filteredCadastros.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-14 text-muted-foreground">
-              <FileSignature className="mb-4 h-12 w-12 opacity-50" />
-              <p>Nenhum cadastro encontrado.</p>
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/50 px-6 py-5 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+                  <FileSignature className="h-4.5 w-4.5 text-secondary-foreground" />
+                </span>
+                Cadastros e Contratos
+              </h2>
             </div>
-          ) : (
-            <table className="w-full text-left text-sm text-foreground">
-              <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Contrato</th>
-                  <th className="px-6 py-4 font-medium">Proprietário</th>
-                  <th className="px-6 py-4 font-medium">Inquilino</th>
-                  <th className="px-6 py-4 font-medium text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {filteredCadastros.map((cad) => (
-                  <tr key={cad.id} className="transition-colors hover:bg-muted/30">
-                    <td className="px-6 py-4 font-medium">{cad.contrato}</td>
-                    <td className="px-6 py-4">{cad.nomeProp}</td>
-                    <td className="px-6 py-4">{cad.nomeInq}</td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => handleRenew(cad)}
-                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-blue-100 hover:text-blue-600"
-                          title="Renovar Contrato"
-                        >
-                          <RefreshCw className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => handleEdit(cad)}
-                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
-                          title="Editar"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => confirmDelete(cad.id)}
-                          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-red-100 hover:text-red-600"
-                          title="Excluir"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Buscar contrato ou nome..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30 sm:w-64"
+                />
+              </div>
+              <button
+                onClick={handleNew}
+                className="flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all hover:brightness-105"
+              >
+                <PlusCircle className="h-4 w-4" />
+                Novo Cadastro
+              </button>
+            </div>
+          </div>
+
+          <div className="flex border-b border-border">
+            {['Todos', 'Ativo', 'Encerrado', 'Renovado'].map(status => (
+              <button
+                key={status}
+                onClick={() => setTabStatus(status)}
+                className={`px-6 py-3 text-sm font-medium transition-colors ${
+                  tabStatus === status
+                    ? 'border-b-2 border-primary text-primary bg-muted/20'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
+
+          <div className="overflow-x-auto">
+            {filteredCadastros.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-14 text-muted-foreground">
+                <FileSignature className="mb-4 h-12 w-12 opacity-50" />
+                <p>Nenhum cadastro encontrado.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-sm text-foreground">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-6 py-4 font-medium">Contrato & Status</th>
+                    <th className="px-6 py-4 font-medium">Partes Envolvidas</th>
+                    <th className="px-6 py-4 font-medium">Financeiro & Prazos</th>
+                    <th className="px-6 py-4 font-medium text-right">Ações Rápidas</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filteredCadastros.map((cad) => (
+                    <tr key={cad.id} className="transition-colors hover:bg-muted/10 group">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-foreground">{cad.contrato}</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                            cad.status === 'Ativo' ? 'bg-green-100 text-green-700' :
+                            cad.status === 'Encerrado' ? 'bg-red-100 text-red-700' :
+                            'bg-blue-100 text-blue-700'
+                          }`}>
+                            {cad.status}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                         <div className="flex flex-col gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                               <span className="text-xs font-semibold text-muted-foreground uppercase w-8">Prop:</span>
+                               <span className="font-medium text-foreground">{cad.nomeProp}</span>
+                               <a href={getWhatsappLink(cad.telProp, `Olá ${cad.nomeProp}, aqui é da IMG Imóveis Mogi Guaçu.`)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:brightness-110 p-1 bg-[#25D366]/10 rounded-full" title="WhatsApp Proprietário">
+                                 <MessageCircle className="h-3.5 w-3.5" />
+                               </a>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                               <span className="text-xs font-semibold text-muted-foreground uppercase w-8">Inq:</span>
+                               <span className="font-medium text-foreground">{cad.nomeInq}</span>
+                               <a href={getWhatsappLink(cad.telInq, `Olá ${cad.nomeInq}, aqui é da IMG Imóveis Mogi Guaçu.`)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:brightness-110 p-1 bg-[#25D366]/10 rounded-full" title="WhatsApp Inquilino">
+                                 <MessageCircle className="h-3.5 w-3.5" />
+                               </a>
+                            </div>
+                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-medium text-brand-navy">
+                          {cad.valorAluguel ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(cad.valorAluguel) : 'R$ 0,00'}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Dia de Venc.: {cad.diaVencimento}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {cad.inicioContrato && cad.fimContrato ? `${cad.inicioContrato.split('-').reverse().join('/')} até ${cad.fimContrato.split('-').reverse().join('/')}` : 'Sem datas'}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-1 opacity-100 lg:opacity-50 transition-opacity lg:group-hover:opacity-100">
+                          <button
+                            onClick={() => handleRenew(cad)}
+                            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-blue-100 hover:text-blue-700"
+                            title="Renovar Contrato"
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleEdit(cad)}
+                            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-secondary hover:text-secondary-foreground"
+                            title="Editar"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => confirmDelete(cad.id)}
+                            className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-red-100 hover:text-red-700"
+                            title="Excluir"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <ConfirmModal
+            isOpen={deleteModalOpen}
+            title="Excluir Cadastro"
+            message="Tem certeza que deseja excluir este cadastro? Esta ação não pode ser desfeita."
+            onConfirm={handleDelete}
+            onCancel={() => {
+              setDeleteModalOpen(false)
+              setCadastroToDelete(null)
+            }}
+          />
         </div>
-        <ConfirmModal
-          isOpen={deleteModalOpen}
-          title="Excluir Cadastro"
-          message="Tem certeza que deseja excluir este cadastro? Esta ação não pode ser desfeita."
-          onConfirm={handleDelete}
-          onCancel={() => {
-            setDeleteModalOpen(false)
-            setCadastroToDelete(null)
-          }}
-        />
       </div>
     )
   }

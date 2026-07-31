@@ -3,10 +3,9 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../store'
 import { checkBoletoWarning, getWhatsappLink } from '../utils/dates'
-import { FileText, MessageCircle, CheckCircle, Loader2 } from 'lucide-react'
+import { FileText, MessageCircle, CheckCircle, Loader2, Search } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
-import { ConfirmModal } from '../components/ui/ConfirmModal'
 
 interface BoletoItem {
   id: string
@@ -25,11 +24,8 @@ export default function Boletos() {
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'pendentes' | 'concluidos'>('pendentes')
-  const [modal, setModal] = useState<{ isOpen: boolean; item: BoletoItem | null; action: 'marcar' | 'desfazer' }>({
-    isOpen: false,
-    item: null,
-    action: 'marcar'
-  })
+
+  const [searchTerm, setSearchTerm] = useState('')
 
   // Formato: YYYY-MM
   const currentMonthRef = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
@@ -59,7 +55,6 @@ export default function Boletos() {
         })
       }
     })
-
     setBoletos(result)
   }
 
@@ -71,11 +66,7 @@ export default function Boletos() {
     }
   }, [cadastros, tarefas])
 
-  const confirmAction = async () => {
-    const { item, action } = modal
-    if (!item) return
-
-    setModal({ ...modal, isOpen: false })
+  const toggleAction = async (item: BoletoItem, action: 'marcar' | 'desfazer') => {
     setProcessingId(item.id)
     const tipoStr = item.tipoAviso === '5_dias' ? 'Boleto 5 dias' : item.tipoAviso === '1_dia' ? 'Boleto 1 dia' : item.tipoAviso === 'atrasado' ? 'Boleto Atrasado' : 'Boleto Hoje'
 
@@ -108,9 +99,17 @@ export default function Boletos() {
     }
   }
 
-  const pendentes = boletos.filter(b => !b.isFeito)
-  const concluidos = boletos.filter(b => b.isFeito)
+  const filteredBoletos = boletos.filter((b) => {
+    const term = searchTerm.toLowerCase()
+    return b.nomeInq.toLowerCase().includes(term) || String(b.contrato).toLowerCase().includes(term)
+  })
+
+  const pendentes = filteredBoletos.filter(b => !b.isFeito)
+  const concluidos = filteredBoletos.filter(b => b.isFeito)
   const currentList = tab === 'pendentes' ? pendentes : concluidos
+  
+  const totalItems = filteredBoletos.length;
+  const progressPercent = totalItems === 0 ? 0 : Math.round((concluidos.length / totalItems) * 100);
 
   const cincoDias = currentList.filter((b) => b.tipoAviso === '5_dias')
   const umDia = currentList.filter((b) => b.tipoAviso === '1_dia')
@@ -164,14 +163,14 @@ export default function Boletos() {
                     href={getWhatsappLink(item.telefone, text)}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 transition-all hover:brightness-105"
+                    className="flex items-center gap-1.5 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105"
                   >
                     <MessageCircle className="h-4 w-4" />
                     Avisar
                   </a>
                   {!item.isFeito ? (
                     <button
-                      onClick={() => setModal({ isOpen: true, item, action: 'marcar' })}
+                      onClick={() => toggleAction(item, 'marcar')}
                       disabled={isProcessing}
                       className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
                     >
@@ -180,7 +179,7 @@ export default function Boletos() {
                     </button>
                   ) : (
                     <button
-                      onClick={() => setModal({ isOpen: true, item, action: 'desfazer' })}
+                      onClick={() => toggleAction(item, 'desfazer')}
                       disabled={isProcessing}
                       className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
                       title="Desfazer"
@@ -200,30 +199,39 @@ export default function Boletos() {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <ConfirmModal
-        isOpen={modal.isOpen}
-        title={modal.action === 'marcar' ? 'Marcar como Feito' : 'Desfazer Ação'}
-        message={
-          modal.action === 'marcar'
-            ? `Deseja realmente marcar o aviso de boleto para o contrato ${modal.item?.contrato} como feito?`
-            : `Deseja desfazer a marcação do aviso para o contrato ${modal.item?.contrato}?`
-        }
-        confirmText={modal.action === 'marcar' ? 'Sim, marcar' : 'Sim, desfazer'}
-        intent={modal.action === 'marcar' ? 'success' : 'warning'}
-        onConfirm={confirmAction}
-        onCancel={() => setModal({ ...modal, isOpen: false })}
-      />
-
-      <div className="border-b border-border bg-muted/50 px-6 py-5">
-        <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-            <FileText className="h-4.5 w-4.5 text-secondary-foreground" />
-          </span>
-          Envio de Boletos (Vencimentos)
-        </h2>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          Avisos de cobrança programados para 5 dias e 1 dia antes do vencimento.
-        </p>
+      <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/50 px-6 py-5 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
+              <FileText className="h-4.5 w-4.5 text-secondary-foreground" />
+            </span>
+            Envio de Boletos (Vencimentos)
+          </h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+            Avisos de cobrança programados para 5 dias e 1 dia antes do vencimento.
+          </p>
+          
+          <div className="mt-3 h-1.5 w-48 bg-border rounded-full overflow-hidden flex items-center">
+            <div 
+              className={`h-full transition-all duration-500 ${progressPercent === 100 ? 'bg-primary' : 'bg-brand-navy'}`} 
+              style={{ width: `${progressPercent}%` }} 
+            />
+          </div>
+          <p className="text-xs font-semibold text-muted-foreground mt-1">
+             {concluidos.length}/{totalItems} Concluídos ({progressPercent}%)
+          </p>
+        </div>
+        
+        <div className="relative w-full sm:w-auto">
+          <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Buscar nome ou contrato..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-xl border border-input bg-card py-2.5 pl-10 pr-4 text-sm shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30 sm:w-64"
+          />
+        </div>
       </div>
 
       <div className="flex border-b border-border">
@@ -231,7 +239,7 @@ export default function Boletos() {
           onClick={() => setTab('pendentes')}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             tab === 'pendentes'
-              ? 'border-b-2 border-primary text-primary'
+              ? 'border-b-2 border-primary text-primary bg-muted/20'
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
@@ -241,7 +249,7 @@ export default function Boletos() {
           onClick={() => setTab('concluidos')}
           className={`flex-1 py-3 text-sm font-medium transition-colors ${
             tab === 'concluidos'
-              ? 'border-b-2 border-primary text-primary'
+              ? 'border-b-2 border-primary text-primary bg-muted/20'
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >

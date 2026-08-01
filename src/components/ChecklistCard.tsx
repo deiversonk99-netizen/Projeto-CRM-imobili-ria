@@ -22,7 +22,6 @@ interface ChecklistCardProps {
 export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdate }: ChecklistCardProps) {
   const [checklist, setChecklist] = useState(initialChecklist)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabType>('Locador')
   const [newDocForm, setNewDocForm] = useState({ nome: '', categoria: 'Locatário' as TabType })
   
   const [isSaving, setIsSaving] = useState(false)
@@ -125,7 +124,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
         }
       ]
     }))
-    setNewDocForm({ nome: '', categoria: activeTab })
+    setNewDocForm(prev => ({ ...prev, nome: '' }))
   }
 
   const renderExtraItem = (doc: DocumentoExtra) => {
@@ -144,7 +143,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
               onChange={() => handleToggleExtra(doc.id)} 
               className={checkboxClass + ' mt-0.5 shrink-0'} 
             />
-            <span className={`text-sm font-medium transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'} break-words`}>
+            <span className={`text-sm font-medium transition-colors ${doc.isFeito ? 'text-muted-foreground line-through' : 'text-foreground'} break-words whitespace-normal`}>
               {doc.nome}
             </span>
           </label>
@@ -185,13 +184,6 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     )
   }
 
-  const tabs: { id: TabType, label: string, color: string }[] = [
-    { id: 'Locador', label: 'Locador (Proprietário)', color: 'bg-brand-navy' },
-    { id: 'Locatário', label: 'Locatário (Inquilino)', color: 'bg-primary' },
-    { id: 'Imóvel', label: 'Imóvel', color: 'bg-secondary' },
-    { id: 'Contratos', label: 'Contratos & Outros', color: 'bg-orange-400' },
-  ]
-
   // Intelligent Sorting: Pending first, done last
   const getSortedDocs = (categoryFilter: (d: DocumentoExtra) => boolean) => {
     return [...checklist.docsExtras]
@@ -199,18 +191,18 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       .sort((a, b) => (a.isFeito === b.isFeito ? 0 : a.isFeito ? 1 : -1))
   }
 
-  const renderActiveTabContent = () => {
-    let docs: DocumentoExtra[] = [];
-    if (activeTab === 'Locador') docs = getSortedDocs(d => d.categoria === 'Locador');
-    else if (activeTab === 'Locatário') docs = getSortedDocs(d => d.categoria === 'Locatário');
-    else if (activeTab === 'Imóvel') docs = getSortedDocs(d => d.categoria === 'Imóvel');
-    else if (activeTab === 'Contratos') docs = getSortedDocs(d => d.categoria === 'Contratos' || d.categoria === 'Outros');
-
+  const renderCategoryDocs = (title: string, categoryFilter: (d: DocumentoExtra) => boolean, color: string) => {
+    const docs = getSortedDocs(categoryFilter)
+    
     return (
-      <div className="animate-in fade-in duration-300">
-        <ul className="divide-y divide-border/50 border border-border rounded-xl p-2 bg-card shadow-sm">
+      <div className="flex flex-col">
+        <h4 className="flex items-center gap-2 font-semibold text-sm mb-3">
+          <span className={`w-2 h-2 rounded-full ${color}`}></span>
+          {title}
+        </h4>
+        <ul className="divide-y divide-border/50 border border-border rounded-xl p-2 bg-card shadow-sm flex-1">
           {docs.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4 text-center">Nenhum documento encontrado para esta aba.</p>
+            <p className="text-sm text-muted-foreground p-4 text-center">Nenhum documento.</p>
           ) : (
             docs.map(renderExtraItem)
           )}
@@ -269,29 +261,12 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       {isExpanded && (
         <div className="mt-6 pt-6 border-t border-border animate-in slide-in-from-top-2 duration-200">
           
-          {/* Tabs */}
-          <div className="flex flex-wrap items-center gap-2 mb-5">
-            {tabs.map(tab => {
-              const isActive = activeTab === tab.id
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                    isActive 
-                      ? 'bg-muted text-foreground shadow-sm ring-1 ring-border' 
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  }`}
-                >
-                  <span className={`h-2 w-2 rounded-full ${tab.color}`} />
-                  {tab.label}
-                </button>
-              )
-            })}
+          {/* Columns */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {renderCategoryDocs('Locatário / Inquilino', d => d.categoria === 'Locatário', 'bg-primary')}
+            {renderCategoryDocs('Locador / Proprietário', d => d.categoria === 'Locador', 'bg-brand-navy')}
+            {renderCategoryDocs('Imóvel / Outros', d => ['Imóvel', 'Contratos', 'Outros'].includes(d.categoria), 'bg-secondary')}
           </div>
-
-          {/* Active Tab Content */}
-          {renderActiveTabContent()}
 
           {/* Add Document Form */}
           <div className="mt-6 border border-dashed border-border rounded-xl p-4 bg-muted/20">
@@ -326,7 +301,6 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
               </button>
             </div>
           </div>
-
         </div>
       )}
     </div>

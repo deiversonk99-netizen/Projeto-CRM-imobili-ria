@@ -90,7 +90,24 @@ function getSheetData(sheetName) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return []; // Empty or just headers
   
-  const headers = data[0];
+  const sheetsConfig = {
+    'Cadastros': [
+      'id', 'dataHora', 'contrato', 'nomeProp', 'telProp', 'niverProp',
+      'nomeInq', 'telInq', 'niverInq', 'inicioContrato', 'fimContrato',
+      'corretor', 'diaVencimento', 'enderecoImovel', 'tipoImovel', 'valorAluguel',
+      'comissao', 'emailProp', 'emailInq', 'status'
+    ],
+    'Checklists': [
+      'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
+      'inq_manualEntregue', 'inq_vistoriaAssinada', 'inq_seguroIncendio',
+      'documentos_json'
+    ],
+    'Tarefas': [
+      'idTarefa', 'dataConclusao', 'contrato', 'tipo', 'usuario', 'referencia'
+    ]
+  };
+
+  const headers = sheetsConfig[sheetName] || data[0];
   const rows = data.slice(1);
   
   return rows.map(row => {

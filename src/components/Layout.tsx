@@ -1,6 +1,7 @@
 import { FileText, Calendar, FileCheck, Menu, X, PlusCircle, Building2 } from 'lucide-react';
 import React, { useState } from 'react';
 import logoUrl from './logo-main-negative.png';
+import { useAuth } from '../context/AuthContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -8,13 +9,13 @@ interface LayoutProps {
   setActiveTab: (tab: string) => void;
 }
 
-const navItems = [
-  { id: 'resumo', label: 'Resumo', icon: FileText },
-  { id: 'cadastro', label: 'Contratos / Cadastros', icon: PlusCircle },
-  { id: 'aniversarios', label: 'Aniversários', icon: Calendar },
-  { id: 'renovacoes', label: 'Renovações (60d)', icon: Calendar },
-  { id: 'documentos', label: 'Checklist Docs', icon: FileCheck },
-  { id: 'boletos', label: 'Financeiro / Boletos', icon: FileText },
+const allNavItems = [
+  { id: 'resumo', label: 'Resumo', icon: FileText, interfaceId: 0 },
+  { id: 'cadastro', label: 'Contratos / Cadastros', icon: PlusCircle, interfaceId: 1 },
+  { id: 'aniversarios', label: 'Aniversários', icon: Calendar, interfaceId: 2 },
+  { id: 'renovacoes', label: 'Renovações (60d)', icon: Calendar, interfaceId: 3 },
+  { id: 'documentos', label: 'Checklist Docs', icon: FileCheck, interfaceId: 4 },
+  { id: 'boletos', label: 'Financeiro / Boletos', icon: FileText, interfaceId: 5 },
 ];
 
 const pageTitles: Record<string, string> = {
@@ -46,6 +47,12 @@ function Brand() {
 
 export default function Layout({ children, activeTab, setActiveTab }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { user, logout } = useAuth();
+
+  const allowedTabs = user?.interfaces || [];
+  const navItems = allNavItems.filter(
+    (item) => item.interfaceId === 0 || allowedTabs.includes(item.interfaceId) || allowedTabs.includes(99)
+  );
 
   return (
     <div className="flex h-screen bg-background font-sans">
@@ -75,7 +82,7 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1.5 p-4" aria-label="Navegação principal">
+        <nav className="flex-1 space-y-1.5 p-4 overflow-y-auto" aria-label="Navegação principal">
           <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50">
             Gestão de Locações
           </p>
@@ -109,6 +116,14 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
         </nav>
 
         <div className="border-t border-sidebar-border p-4">
+          {user && (
+            <div className="mb-4 flex items-center justify-between gap-3 px-2">
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-medium text-white truncate">{user.nome}</span>
+                <span className="text-xs text-sidebar-foreground/60 truncate">{user.email}</span>
+              </div>
+            </div>
+          )}
           <div className="flex items-center gap-2.5 rounded-xl bg-sidebar-accent px-4 py-3">
             <Building2 className="h-4 w-4 shrink-0 text-sidebar-primary" />
             <p className="text-xs leading-relaxed text-sidebar-foreground/80">
@@ -134,11 +149,18 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
 
         <div className="flex-1 overflow-auto">
           <div className="mx-auto max-w-4xl p-4 md:p-6 lg:p-10">
-            <div className="mb-6 hidden lg:block">
-              <h1 className="text-2xl font-bold tracking-tight text-brand-navy text-balance">
-                {pageTitles[activeTab]}
-              </h1>
-              <div className="mt-2 h-1 w-12 rounded-full bg-primary" />
+            <div className="mb-6 hidden lg:flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-brand-navy text-balance">
+                  {pageTitles[activeTab]}
+                </h1>
+                <div className="mt-2 h-1 w-12 rounded-full bg-primary" />
+              </div>
+              
+              <div className="flex items-center gap-4 text-sm font-medium text-slate-600 bg-white px-4 py-2 rounded-full shadow-sm border border-slate-100">
+                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                Olá, {user?.nome?.split(' ')[0] || 'Usuário'}
+              </div>
             </div>
             {children}
           </div>

@@ -82,17 +82,28 @@ export default function Cadastros() {
     }
   }, [cadastros]);
 
+  const parseIsoToDDMM = (dateStr: string) => {
+    if (!dateStr) return '';
+    if (dateStr.includes('T') && dateStr.length >= 10) {
+      // Assuming format is YYYY-MM-DDThh:mm...
+      const month = dateStr.substring(5, 7);
+      const day = dateStr.substring(8, 10);
+      return `${day}/${month}`;
+    }
+    return dateStr;
+  }
+
   const handleEdit = (cadastro: Cadastro) => {
     setEditingId(cadastro.id)
     setFormData({
       contrato: cadastro.contrato,
       nomeProp: cadastro.nomeProp,
       telProp: cadastro.telProp,
-      niverProp: cadastro.niverProp,
+      niverProp: parseIsoToDDMM(cadastro.niverProp),
       emailProp: cadastro.emailProp || '',
       nomeInq: cadastro.nomeInq,
       telInq: cadastro.telInq,
-      niverInq: cadastro.niverInq,
+      niverInq: parseIsoToDDMM(cadastro.niverInq),
       emailInq: cadastro.emailInq || '',
       inicioContrato: cadastro.inicioContrato.split('T')[0],
       fimContrato: cadastro.fimContrato.split('T')[0],
@@ -113,11 +124,11 @@ export default function Cadastros() {
       contrato: `${cadastro.contrato}-REN`,
       nomeProp: cadastro.nomeProp,
       telProp: cadastro.telProp,
-      niverProp: cadastro.niverProp,
+      niverProp: parseIsoToDDMM(cadastro.niverProp),
       emailProp: cadastro.emailProp || '',
       nomeInq: cadastro.nomeInq,
       telInq: cadastro.telInq,
-      niverInq: cadastro.niverInq,
+      niverInq: parseIsoToDDMM(cadastro.niverInq),
       emailInq: cadastro.emailInq || '',
       inicioContrato: cadastro.fimContrato.split('T')[0], // start from previous end
       fimContrato: '', // require new end date

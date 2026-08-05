@@ -50,3 +50,12 @@ export interface TarefaConcluida {
   usuario: string;
   referencia: string; // e.g., '2023' for birthdays, '2023-10' for boletos
 }
+
+export interface Usuario {
+  id?: string;
+  nome: string;
+  email: string;
+  login: string;
+  senha?: string;
+  interfaces: number[];
+}

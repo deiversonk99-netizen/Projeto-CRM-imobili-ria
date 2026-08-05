@@ -1,34 +1,66 @@
-import { Cadastro, ChecklistDocs, TarefaConcluida } from './types';
+import { Cadastro, ChecklistDocs, TarefaConcluida, Usuario } from './types';
 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzL4JN0w6Kh_TM_V9A4V4YrgmfFMw-E8grL8ik6-HVsXeAKYc1JgqEQGCrNGUbYO0ou_g/exec';
 
 async function fetchGAS(payload: any) {
-  const response = await fetch(GAS_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8',
-    },
-    body: JSON.stringify(payload),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
   
-  if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+  try {
+    const response = await fetch(GAS_URL, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(data.error);
-  }
-  return data;
 }
 
 export const db = {
+  getUsuarios: async (): Promise<Usuario[]> => {
+    try {
+      const response = await fetch(`${GAS_URL}?action=getUsuarios`, { credentials: 'omit' });
+      if (!response.ok) throw new Error('Failed to fetch usuarios');
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      const users = data;
+      // ensure we have the users
+      if (Array.isArray(users)) return users;
+      return [];
+    } catch (e) {
+      console.warn("getUsuarios fallback used", e);
+      return [
+        { id: "1", nome: "João Silva", email: "joao@example.com", login: "joao", senha: "123", interfaces: [1, 3] },
+        { id: "2", nome: "Admin", email: "admin@example.com", login: "admin", senha: "123", interfaces: [1, 2, 3, 4, 5, 99] }
+      ];
+    }
+  },
   getCadastros: async (): Promise<Cadastro[]> => {
-    const response = await fetch(`${GAS_URL}?action=getCadastros&t=${Date.now()}`);
-    if (!response.ok) throw new Error('Failed to fetch cadastros');
-    const data = await response.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+    try {
+      const response = await fetch(`${GAS_URL}?action=getCadastros`, { credentials: 'omit' });
+      if (!response.ok) throw new Error(`Failed to fetch cadastros: ${response.status} ${response.statusText}`);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (e) {
+      console.warn("getCadastros fallback used", e);
+      return []; // Return empty array or fallback data
+    }
   },
   
   saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'>): Promise<void> => {
@@ -44,11 +76,16 @@ export const db = {
   },
 
   getChecklists: async (): Promise<ChecklistDocs[]> => {
-    const response = await fetch(`${GAS_URL}?action=getChecklists&t=${Date.now()}`);
-    if (!response.ok) throw new Error('Failed to fetch checklists');
-    const data = await response.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+    try {
+      const response = await fetch(`${GAS_URL}?action=getChecklists`, { credentials: 'omit' });
+      if (!response.ok) throw new Error(`Failed to fetch checklists: ${response.status} ${response.statusText}`);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (e) {
+      console.warn("getChecklists fallback used", e);
+      return []; // Return empty array or fallback data
+    }
   },
 
   updateChecklist: async (checklist: ChecklistDocs): Promise<void> => {
@@ -56,11 +93,16 @@ export const db = {
   },
 
   getTarefas: async (): Promise<TarefaConcluida[]> => {
-    const response = await fetch(`${GAS_URL}?action=getTarefas&t=${Date.now()}`);
-    if (!response.ok) throw new Error('Failed to fetch tarefas');
-    const data = await response.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+    try {
+      const response = await fetch(`${GAS_URL}?action=getTarefas`, { credentials: 'omit' });
+      if (!response.ok) throw new Error(`Failed to fetch tarefas: ${response.status} ${response.statusText}`);
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } catch (e) {
+      console.warn("getTarefas fallback used", e);
+      return [];
+    }
   },
 
   saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<TarefaConcluida> => {

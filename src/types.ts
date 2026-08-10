@@ -19,6 +19,8 @@ export interface Cadastro {
   valorAluguel?: number;
   comissao?: number;
   status?: 'Ativo' | 'Encerrado' | 'Renovado';
+  finalidade?: string;
+  condominio?: string;
 }
 
 export interface DocumentoExtra {

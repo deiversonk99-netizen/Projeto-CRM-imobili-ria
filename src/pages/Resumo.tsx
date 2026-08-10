@@ -32,8 +32,10 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
     
     cadastros.forEach(c => {
       if (c.status === 'Ativo' || !c.status) {
-        totalAluguel += Number(c.valorAluguel) || 0;
-        totalComissao += Number(c.comissao) || 0;
+        const aluguel = Number(c.valorAluguel) || 0;
+        const comissaoPercent = Number(c.comissao) || 0;
+        totalAluguel += aluguel;
+        totalComissao += (aluguel * (comissaoPercent / 100));
       }
     });
 

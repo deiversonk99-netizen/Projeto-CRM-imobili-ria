@@ -6,7 +6,7 @@ function setupSpreadsheet() {
       'id', 'dataHora', 'contrato', 'nomeProp', 'telProp', 'niverProp',
       'nomeInq', 'telInq', 'niverInq', 'inicioContrato', 'fimContrato',
       'corretor', 'diaVencimento', 'enderecoImovel', 'tipoImovel', 'valorAluguel',
-      'comissao', 'emailProp', 'emailInq', 'status'
+      'comissao', 'emailProp', 'emailInq', 'status', 'finalidade', 'condominio'
     ],
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
@@ -95,7 +95,7 @@ function getSheetData(sheetName) {
       'id', 'dataHora', 'contrato', 'nomeProp', 'telProp', 'niverProp',
       'nomeInq', 'telInq', 'niverInq', 'inicioContrato', 'fimContrato',
       'corretor', 'diaVencimento', 'enderecoImovel', 'tipoImovel', 'valorAluguel',
-      'comissao', 'emailProp', 'emailInq', 'status'
+      'comissao', 'emailProp', 'emailInq', 'status', 'finalidade', 'condominio'
     ],
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
@@ -127,6 +127,13 @@ function saveCadastro(cadastroData) {
   const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
   const sheet = ss.getSheetByName('Cadastros');
   
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][2]).trim() === String(cadastroData.contrato).trim()) {
+      return { error: 'Número de contrato já existe' };
+    }
+  }
+
   const id = Utilities.getUuid();
   const dataHora = new Date().toISOString();
   
@@ -136,7 +143,7 @@ function saveCadastro(cadastroData) {
     cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
     cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
     cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
-    cadastroData.emailInq || '', cadastroData.status || 'Ativo'
+    cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
   ]);
   
   // Auto-create checklist
@@ -153,15 +160,21 @@ function updateCadastro(cadastroData) {
   const data = sheet.getDataRange().getValues();
   
   for (let i = 1; i < data.length; i++) {
+    if (data[i][0] !== cadastroData.id && String(data[i][2]).trim() === String(cadastroData.contrato).trim()) {
+      return { error: 'Número de contrato já existe' };
+    }
+  }
+
+  for (let i = 1; i < data.length; i++) {
     if (data[i][0] === cadastroData.id) {
       const rowIndex = i + 1;
-      sheet.getRange(rowIndex, 3, 1, 18).setValues([[
+      sheet.getRange(rowIndex, 3, 1, 20).setValues([[
         cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
         cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
         cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
         cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
         cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
-        cadastroData.emailInq || '', cadastroData.status || 'Ativo'
+        cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
       ]]);
       return { success: true };
     }

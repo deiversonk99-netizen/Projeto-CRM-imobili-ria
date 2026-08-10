@@ -55,6 +55,8 @@ export default function Cadastros() {
     diaVencimento: 1,
     enderecoImovel: '',
     tipoImovel: '',
+    finalidade: '',
+    condominio: '',
     valorAluguel: 0,
     comissao: 0,
     status: 'Ativo',
@@ -111,6 +113,8 @@ export default function Cadastros() {
       diaVencimento: cadastro.diaVencimento,
       enderecoImovel: cadastro.enderecoImovel || '',
       tipoImovel: cadastro.tipoImovel || '',
+      finalidade: cadastro.finalidade || '',
+      condominio: cadastro.condominio || '',
       valorAluguel: cadastro.valorAluguel || 0,
       comissao: cadastro.comissao || 0,
       status: cadastro.status || 'Ativo',
@@ -136,6 +140,8 @@ export default function Cadastros() {
       diaVencimento: cadastro.diaVencimento,
       enderecoImovel: cadastro.enderecoImovel || '',
       tipoImovel: cadastro.tipoImovel || '',
+      finalidade: cadastro.finalidade || '',
+      condominio: cadastro.condominio || '',
       valorAluguel: cadastro.valorAluguel || 0,
       comissao: cadastro.comissao || 0,
       status: 'Ativo',
@@ -183,6 +189,8 @@ export default function Cadastros() {
       diaVencimento: 1,
       enderecoImovel: '',
       tipoImovel: '',
+      finalidade: '',
+      condominio: '',
       valorAluguel: 0,
       comissao: 0,
       status: 'Ativo',
@@ -215,7 +223,8 @@ export default function Cadastros() {
     e.preventDefault()
 
     // Validations
-    if (!editingId && cadastros.some(c => c.contrato === formData.contrato)) {
+    const contratoExists = cadastros.some(c => String(c.contrato).trim() === String(formData.contrato).trim() && c.id !== editingId);
+    if (contratoExists) {
       addToast('Número de contrato já existe!', 'error')
       return;
     }
@@ -718,6 +727,43 @@ export default function Cadastros() {
                 <option value="Apartamento">Apartamento</option>
                 <option value="Comercial">Comercial</option>
                 <option value="Terreno">Terreno</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            
+            <div>
+              <label htmlFor="finalidade" className={labelClass}>
+                Finalidade
+              </label>
+              <select
+                id="finalidade"
+                name="finalidade"
+                value={formData.finalidade || ''}
+                onChange={handleChange}
+                className={inputClass}
+              >
+                <option value="">Selecione...</option>
+                <option value="Residencial">Residencial</option>
+                <option value="Comercial">Comercial</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="condominio" className={labelClass}>
+                Condomínio
+              </label>
+              <select
+                id="condominio"
+                name="condominio"
+                value={formData.condominio || ''}
+                onChange={handleChange}
+                className={inputClass}
+              >
+                <option value="">Nenhum / Não se aplica</option>
+                <option value="Vila Hadassas">Vila Hadassas</option>
+                <option value="Morro do Sol">Morro do Sol</option>
+                <option value="Bela Vista">Bela Vista</option>
+                <option value="Residencial Oregon">Residencial Oregon</option>
                 <option value="Outro">Outro</option>
               </select>
             </div>

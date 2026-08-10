@@ -1,4 +1,4 @@
-import { FileText, Calendar, FileCheck, Menu, X, PlusCircle, Building2 } from 'lucide-react';
+import { FileText, Calendar, FileCheck, Menu, X, PlusCircle, Building2, Tag } from 'lucide-react';
 import React, { useState } from 'react';
 import logoUrl from './logo-main-negative.png';
 import { useAuth } from '../context/AuthContext';
@@ -16,6 +16,7 @@ const allNavItems = [
   { id: 'renovacoes', label: 'Renovações (60d)', icon: Calendar, interfaceId: 3 },
   { id: 'documentos', label: 'Checklist Docs', icon: FileCheck, interfaceId: 4 },
   { id: 'boletos', label: 'Financeiro / Boletos', icon: FileText, interfaceId: 5 },
+  { id: 'promocoes', label: 'Promoções', icon: Tag, interfaceId: 6 },
 ];
 
 const pageTitles: Record<string, string> = {

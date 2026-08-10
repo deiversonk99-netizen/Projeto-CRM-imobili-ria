@@ -11,6 +11,7 @@ import Aniversarios from './pages/Aniversarios';
 import Renovacoes from './pages/Renovacoes';
 import Documentos from './pages/Documentos';
 import Boletos from './pages/Boletos';
+import Promocoes from './pages/Promocoes';
 import Login from './pages/Login';
 import { DataProvider, useData } from './context/DataContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -20,6 +21,8 @@ function AppContent() {
   const [activeTab, setActiveTab] = useState('resumo');
   const { loading: dataLoading, error } = useData();
   const { user, loading: authLoading } = useAuth();
+
+  const { cadastros } = useData();
 
   if (authLoading) {
     return (
@@ -74,6 +77,7 @@ function AppContent() {
       {activeTab === 'renovacoes' && hasAccess(3) && <Renovacoes />}
       {activeTab === 'documentos' && hasAccess(4) && <Documentos />}
       {activeTab === 'boletos' && hasAccess(5) && <Boletos />}
+      {activeTab === 'promocoes' && hasAccess(6) && <Promocoes cadastros={cadastros} />}
       
       {/* Fallback for unauthorized access to a tab */}
       {activeTab !== 'resumo' && (
@@ -81,7 +85,8 @@ function AppContent() {
         (activeTab === 'aniversarios' && !hasAccess(2)) ||
         (activeTab === 'renovacoes' && !hasAccess(3)) ||
         (activeTab === 'documentos' && !hasAccess(4)) ||
-        (activeTab === 'boletos' && !hasAccess(5))
+        (activeTab === 'boletos' && !hasAccess(5)) ||
+        (activeTab === 'promocoes' && !hasAccess(6))
       ) && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">

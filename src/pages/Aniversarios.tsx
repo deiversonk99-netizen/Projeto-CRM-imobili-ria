@@ -216,7 +216,7 @@ export default function Aniversarios() {
                    </div>
                    <ul className="divide-y divide-border/50">
                     {items.map((item) => {
-                      const text = `Olá ${item.nome}, tudo bem? 👋\n\nParabéns pelo seu Aniversário! 🎉🥳\n\nToda a equipe da Imobiliária IMG Imóveis Mogi-Guaçu te deseja um dia repleto de alegrias, saúde e muito sucesso! ✨\nÉ um prazer ter você como parceiro da nossa imobiliária! 🤝\n\nAproveite seu dia especial! 🎈`
+                      const text = `Olá ${item.nome}, tudo bem? \uD83D\uDC4B\n\nParabéns pelo seu Aniversário! \uD83C\uDF89\uD83E\uDD73\n\nToda a equipe da Imobiliária IMG Imóveis Mogi-Guaçu te deseja um dia repleto de alegrias, saúde e muito sucesso! \u2728\nÉ um prazer ter você como parceiro da nossa imobiliária! \uD83E\uDD1D\n\nAproveite seu dia especial! \uD83C\uDF88`
                       const isToday = item.diasAte === 0
                       const isProcessing = processingId === item.id
         

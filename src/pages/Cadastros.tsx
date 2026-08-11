@@ -388,18 +388,18 @@ export default function Cadastros() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                         <div className="flex flex-col gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                               <span className="text-xs font-semibold text-muted-foreground uppercase w-8">Prop:</span>
-                               <span className="font-medium text-foreground">{cad.nomeProp}</span>
-                               <a href={getWhatsappLink(cad.telProp, `Olá ${cad.nomeProp}, aqui é da IMG Imóveis Mogi Guaçu.`)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:brightness-110 p-1 bg-[#25D366]/10 rounded-full" title="WhatsApp Proprietário">
+                         <div className="flex flex-col gap-3">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 w-12 justify-center">Prop</span>
+                               <span className="font-medium text-foreground text-sm">{cad.nomeProp}</span>
+                               <a href={getWhatsappLink(cad.telProp, `Olá ${cad.nomeProp}, aqui é da IMG Imóveis Mogi Guaçu.`)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:brightness-110 p-1 bg-[#25D366]/10 rounded-full ml-auto md:ml-0" title="WhatsApp Proprietário">
                                  <MessageCircle className="h-3.5 w-3.5" />
                                </a>
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                               <span className="text-xs font-semibold text-muted-foreground uppercase w-8">Inq:</span>
-                               <span className="font-medium text-foreground">{cad.nomeInq}</span>
-                               <a href={getWhatsappLink(cad.telInq, `Olá ${cad.nomeInq}, aqui é da IMG Imóveis Mogi Guaçu.`)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:brightness-110 p-1 bg-[#25D366]/10 rounded-full" title="WhatsApp Inquilino">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                               <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 w-12 justify-center">Inq</span>
+                               <span className="font-medium text-foreground text-sm">{cad.nomeInq}</span>
+                               <a href={getWhatsappLink(cad.telInq, `Olá ${cad.nomeInq}, aqui é da IMG Imóveis Mogi Guaçu.`)} target="_blank" rel="noreferrer" className="text-[#25D366] hover:brightness-110 p-1 bg-[#25D366]/10 rounded-full ml-auto md:ml-0" title="WhatsApp Inquilino">
                                  <MessageCircle className="h-3.5 w-3.5" />
                                </a>
                             </div>
@@ -413,7 +413,7 @@ export default function Cadastros() {
                           Dia de Venc.: {cad.diaVencimento}
                         </div>
                         <div className="mt-1 text-xs text-muted-foreground">
-                          {cad.inicioContrato && cad.fimContrato ? `${cad.inicioContrato.split('-').reverse().join('/')} até ${cad.fimContrato.split('-').reverse().join('/')}` : 'Sem datas'}
+                          {cad.inicioContrato && cad.fimContrato ? `${cad.inicioContrato.split('T')[0].split('-').reverse().join('/')} até ${cad.fimContrato.split('T')[0].split('-').reverse().join('/')}` : 'Sem datas'}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">

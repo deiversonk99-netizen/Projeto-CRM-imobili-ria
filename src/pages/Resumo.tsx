@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
-import { FileSignature, AlertCircle, FileCheck, Calendar as CalendarIcon, ArrowRight, UserRound, FileText, Wallet, TrendingUp } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { FileSignature, AlertCircle, FileCheck, Calendar as CalendarIcon, ArrowRight, UserRound, FileText, Wallet, TrendingUp, Building2, Home, RefreshCcw, PieChart as PieChartIcon } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
 import { checkBoletoWarning, checkBirthday } from '../utils/dates';
 
 const StatCard = ({ icon: Icon, title, value, color, onClick }: any) => (
@@ -120,58 +120,131 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
     return list.sort((a, b) => a.dia - b.dia).slice(0, 5);
   }, [cadastros]);
 
+  const extraStats = useMemo(() => {
+    let encerrados = 0;
+    let renovados = 0;
+    let totalAtivos = 0;
+    let aluguelAtivos = 0;
+
+    cadastros.forEach(c => {
+      if (c.status === 'Encerrado') encerrados++;
+      else if (c.status === 'Renovado') renovados++;
+      
+      if (c.status === 'Ativo' || !c.status) {
+        totalAtivos++;
+        aluguelAtivos += Number(c.valorAluguel) || 0;
+      }
+    });
+
+    const ticketMedio = totalAtivos > 0 ? aluguelAtivos / totalAtivos : 0;
+
+    return {
+      encerrados,
+      renovados,
+      ticketMedioFormatted: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(ticketMedio),
+    };
+  }, [cadastros]);
+
+  const imoveisData = useMemo(() => {
+    const tiposCounts: Record<string, number> = {};
+    const finalidadeCounts: Record<string, number> = {};
+
+    cadastros.forEach(c => {
+      if (c.status === 'Ativo' || !c.status) {
+        const tipo = c.tipoImovel || 'Não Informado';
+        const finalidade = c.finalidade || 'Não Informado';
+        
+        tiposCounts[tipo] = (tiposCounts[tipo] || 0) + 1;
+        finalidadeCounts[finalidade] = (finalidadeCounts[finalidade] || 0) + 1;
+      }
+    });
+
+    const tipos = Object.entries(tiposCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+    const finalidades = Object.entries(finalidadeCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+    return { tipos, finalidades };
+  }, [cadastros]);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#64748b'];
+
   const StatCard = ({ icon: Icon, title, value, color, onClick }: any) => (
     <div 
       onClick={onClick}
-      className="bg-card rounded-2xl p-4 xl:p-6 border border-border shadow-sm flex flex-col sm:flex-row xl:flex-col items-start sm:items-center xl:items-start gap-4 cursor-pointer hover:border-primary/50 transition-colors h-full"
+      className="bg-card rounded-2xl p-4 xl:p-6 border border-border shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 cursor-pointer hover:border-primary/50 transition-colors h-full overflow-hidden"
     >
       <div className={`p-3 rounded-xl shrink-0 ${color}`}>
         <Icon className="w-6 h-6 xl:w-8 xl:h-8" />
       </div>
-      <div className="flex-1 min-w-0 w-full">
-        <h3 className="text-sm font-medium text-muted-foreground leading-tight">{title}</h3>
-        <div className="mt-2 flex items-baseline">{value}</div>
+      <div className="flex-1 min-w-0 w-full overflow-hidden">
+        <h3 className="text-sm font-medium text-muted-foreground leading-tight truncate">{title}</h3>
+        <div className="mt-2 flex items-baseline truncate w-full">{value}</div>
       </div>
     </div>
   );
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard 
           icon={FileSignature} 
           title="Contratos Ativos" 
-          value={<span className="text-2xl xl:text-3xl font-bold text-foreground">{activeContractsCount}</span>} 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate block w-full">{activeContractsCount}</span>} 
           color="bg-primary/10 text-primary" 
           onClick={() => setTab('cadastro')}
         />
         <StatCard 
           icon={FileCheck} 
           title="Pendências (Docs)" 
-          value={<span className="text-2xl xl:text-3xl font-bold text-foreground">{pendingDocsCount}</span>} 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate block w-full">{pendingDocsCount}</span>} 
           color="bg-orange-500/10 text-orange-600" 
           onClick={() => setTab('documentos')}
         />
         <StatCard 
           icon={AlertCircle} 
           title="Vencendo em 60 dias" 
-          value={<span className="text-2xl xl:text-3xl font-bold text-foreground">{expiringSoonCount}</span>} 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate block w-full">{expiringSoonCount}</span>} 
           color="bg-red-500/10 text-red-600" 
           onClick={() => setTab('renovacoes')}
         />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <StatCard 
           icon={Wallet} 
           title="Total Alugado" 
-          value={<span className="text-xl xl:text-2xl font-bold text-foreground break-all sm:break-normal">{financialStats.aluguelFormatted}</span>} 
+          value={<span className="text-xl sm:text-2xl xl:text-3xl font-bold text-foreground truncate block w-full tracking-tight">{financialStats.aluguelFormatted}</span>} 
           color="bg-blue-500/10 text-blue-600" 
           onClick={() => {}}
         />
         <StatCard 
           icon={TrendingUp} 
           title="Receita Estimada" 
-          value={<span className="text-xl xl:text-2xl font-bold text-green-600 break-all sm:break-normal">{financialStats.comissaoFormatted}</span>} 
+          value={<span className="text-xl sm:text-2xl xl:text-3xl font-bold text-green-600 truncate block w-full tracking-tight">{financialStats.comissaoFormatted}</span>} 
           color="bg-green-500/10 text-green-600" 
           onClick={() => {}}
+        />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <StatCard 
+          icon={Building2} 
+          title="Ticket Médio (Aluguel)" 
+          value={<span className="text-xl sm:text-2xl xl:text-3xl font-bold text-foreground truncate block w-full tracking-tight">{extraStats.ticketMedioFormatted}</span>} 
+          color="bg-purple-500/10 text-purple-600" 
+          onClick={() => {}}
+        />
+        <StatCard 
+          icon={Home} 
+          title="Contratos Encerrados" 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate block w-full">{extraStats.encerrados}</span>} 
+          color="bg-slate-500/10 text-slate-600" 
+          onClick={() => setTab('cadastro')}
+        />
+        <StatCard 
+          icon={RefreshCcw} 
+          title="Contratos Renovados" 
+          value={<span className="text-2xl xl:text-3xl font-bold text-foreground truncate block w-full">{extraStats.renovados}</span>} 
+          color="bg-teal-500/10 text-teal-600" 
+          onClick={() => setTab('cadastro')}
         />
       </div>
 
@@ -272,6 +345,85 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
               <p className="text-sm text-muted-foreground">Nenhum aniversário nos próximos 7 dias.</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* New Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-card rounded-2xl p-6 border border-border shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-brand-navy flex items-center gap-2">
+              <PieChartIcon className="w-5 h-5" />
+              Tipos de Imóvel (Ativos)
+            </h3>
+          </div>
+          {imoveisData.tipos.length > 0 ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={imoveisData.tipos}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {imoveisData.tipos.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-xl">
+              Nenhum dado disponível
+            </div>
+          )}
+        </div>
+
+        <div className="bg-card rounded-2xl p-6 border border-border shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-brand-navy flex items-center gap-2">
+              <PieChartIcon className="w-5 h-5" />
+              Finalidade (Ativos)
+            </h3>
+          </div>
+          {imoveisData.finalidades.length > 0 ? (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={imoveisData.finalidades}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {imoveisData.finalidades.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-muted-foreground bg-muted/30 rounded-xl">
+              Nenhum dado disponível
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -26,9 +26,10 @@ export interface Cadastro {
 export interface DocumentoExtra {
   id: string;
   nome: string;
-  categoria: 'Locatário' | 'Locador' | 'Imóvel' | 'Contratos' | 'Outros';
+  categoria: string;
   isFeito: boolean;
   pendencia: string;
+  status?: 'Pendente' | 'Feito' | 'Não se aplica';
 }
 
 export interface ChecklistDocs {

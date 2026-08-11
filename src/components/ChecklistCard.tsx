@@ -22,7 +22,7 @@ interface ChecklistCardProps {
 export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdate }: ChecklistCardProps) {
   const [checklist, setChecklist] = useState(initialChecklist)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [newDocForm, setNewDocForm] = useState({ nome: '', categoria: 'Locatário' as TabType })
+  const [newDocForm, setNewDocForm] = useState({ nome: '', categoria: 'Locatário' })
   
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'idle'>('idle')
@@ -73,9 +73,51 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const done = checklist.docsExtras.filter(d => d.isFeito).length
   const progressPercent = total === 0 ? 0 : Math.round((done / total) * 100)
 
+  const handleStatusChange = (docId: string, newStatus: 'Pendente' | 'Feito' | 'Não se aplica') => {
+    setChecklist(prev => {
+      let newDocs = prev.docsExtras.map(d => {
+        if (d.id === docId) {
+          return {
+            ...d,
+            status: newStatus,
+            isFeito: newStatus === 'Feito' || newStatus === 'Não se aplica'
+          }
+        }
+        return d
+      })
+      
+      const doc = newDocs.find(d => d.id === docId)
+      // Auto-add spouse document
+      if (doc && newStatus === 'Pendente' && doc.nome.includes('Certidão de Casamento')) {
+        const conjugeName = 'CNH (CPF/RG) Cônjuge'
+        if (!newDocs.some(d => d.nome === conjugeName && d.categoria === doc.categoria)) {
+          newDocs.push({
+            id: uuidv4(),
+            nome: conjugeName,
+            categoria: doc.categoria,
+            isFeito: false,
+            pendencia: '',
+            status: 'Pendente'
+          })
+        }
+      }
+      return { ...prev, docsExtras: newDocs }
+    })
+  }
+
   const handleToggleExtra = (docId: string) => {
     setChecklist(prev => {
-      let newDocs = prev.docsExtras.map(d => d.id === docId ? { ...d, isFeito: !d.isFeito } : d)
+      let newDocs = prev.docsExtras.map(d => {
+        if (d.id === docId) {
+          const nextIsFeito = !d.isFeito
+          return { 
+            ...d, 
+            isFeito: nextIsFeito,
+            status: nextIsFeito ? 'Feito' : 'Pendente' 
+          }
+        }
+        return d
+      })
       const doc = newDocs.find(d => d.id === docId)
       
       // Auto-add spouse document
@@ -87,7 +129,8 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             nome: conjugeName,
             categoria: doc.categoria,
             isFeito: false,
-            pendencia: ''
+            pendencia: '',
+            status: 'Pendente'
           })
         }
       }
@@ -109,6 +152,44 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     }))
   }
 
+  const handleAddFiador = () => {
+    setChecklist(prev => {
+      const existingFiadors = prev.docsExtras
+        .map(d => d.categoria)
+        .filter(c => c.startsWith('Fiador '));
+        
+      const maxFiador = existingFiadors.reduce((max, c) => {
+        const num = parseInt(c.replace('Fiador ', ''), 10);
+        return !isNaN(num) && num > max ? num : max;
+      }, 0);
+      
+      const nextFiador = `Fiador ${maxFiador + 1}`;
+      
+      const fiadorDocs = [
+        'Proposta de Locação',
+        'CNH (CPF/RG)',
+        'Comprovante de Endereço',
+        'Certidão de Casamento',
+        'Certidão de Nascimento',
+        'Comprovante de Renda (excluir se não aplica)',
+        'SERASA (excluir se não aplica)',
+        'Matrícula do Imóvel'
+      ].map(nome => ({
+        id: uuidv4(),
+        nome,
+        categoria: nextFiador,
+        isFeito: false,
+        pendencia: '',
+        status: 'Pendente' as 'Pendente'
+      }));
+
+      return {
+        ...prev,
+        docsExtras: [...prev.docsExtras, ...fiadorDocs]
+      };
+    });
+  }
+
   const handleAddExtra = () => {
     if (!newDocForm.nome.trim()) return
     setChecklist(prev => ({
@@ -120,7 +201,8 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
           nome: newDocForm.nome.trim(),
           categoria: newDocForm.categoria,
           isFeito: false,
-          pendencia: ''
+          pendencia: '',
+          status: 'Pendente'
         }
       ]
     }))
@@ -148,15 +230,27 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             </span>
           </label>
           <div className="flex items-center justify-end gap-2 shrink-0 ml-auto pl-7 sm:pl-0">
-            {doc.isFeito ? (
-              <span className="flex items-center gap-1 rounded-md bg-green-100 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-                <CheckCircle2 className="h-3 w-3" /> Entregue
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 rounded-md bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
-                <AlertCircle className="h-3 w-3" /> Pendente
-              </span>
-            )}
+            {(() => {
+              const currentStatus = doc.status || (doc.isFeito ? 'Feito' : 'Pendente');
+              let bgClass = "bg-orange-100 text-orange-700 hover:bg-orange-200";
+              if (currentStatus === 'Feito') bgClass = "bg-green-100 text-green-700 hover:bg-green-200";
+              if (currentStatus === 'Não se aplica') bgClass = "bg-gray-200 text-gray-700 hover:bg-gray-300";
+              
+              return (
+                <div className="relative inline-flex items-center">
+                  <select 
+                    value={currentStatus}
+                    onChange={(e) => handleStatusChange(doc.id, e.target.value as any)}
+                    className={`text-[11px] font-semibold rounded-md pl-2 pr-6 py-0.5 outline-none appearance-none cursor-pointer border-none transition-colors ${bgClass}`}
+                  >
+                    <option value="Pendente">Pendente</option>
+                    <option value="Feito">Ok - Feito</option>
+                    <option value="Não se aplica">Não se aplica</option>
+                  </select>
+                  <ChevronDown className="h-3 w-3 absolute right-1.5 pointer-events-none opacity-50" />
+                </div>
+              );
+            })()}
             <button onClick={() => handleDeleteExtra(doc.id)} className="text-muted-foreground hover:text-red-500 transition-colors shrink-0 p-1 rounded-md hover:bg-red-50" title="Remover documento">
               <Trash2 className="h-4 w-4" />
             </button>
@@ -191,22 +285,55 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       .sort((a, b) => (a.isFeito === b.isFeito ? 0 : a.isFeito ? 1 : -1))
   }
 
-  const renderCategoryDocs = (title: string, categoryFilter: (d: DocumentoExtra) => boolean, color: string) => {
+  const handleRemoveFiador = (fiadorCat: string) => {
+    setChecklist(prev => ({
+      ...prev,
+      docsExtras: prev.docsExtras.filter(d => d.categoria !== fiadorCat)
+    }))
+  }
+
+  const renderCategoryDocs = (title: string, categoryFilter: (d: DocumentoExtra) => boolean, color: string, onRemoveCategory?: () => void) => {
     const docs = getSortedDocs(categoryFilter)
     
     return (
-      <div className="flex flex-col">
-        <h4 className="flex items-center gap-2 font-semibold text-sm mb-3">
-          <span className={`w-2 h-2 rounded-full ${color}`}></span>
-          {title}
-        </h4>
-        <ul className="divide-y divide-border/50 border border-border rounded-xl p-2 bg-card shadow-sm flex-1">
-          {docs.length === 0 ? (
-            <p className="text-sm text-muted-foreground p-4 text-center">Nenhum documento.</p>
-          ) : (
-            docs.map(renderExtraItem)
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="flex items-center gap-2 font-semibold text-sm">
+            <span className={`w-2 h-2 rounded-full ${color}`}></span>
+            {title}
+          </h4>
+          {onRemoveCategory && (
+            <button 
+              onClick={onRemoveCategory}
+              className="text-muted-foreground hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-50"
+              title={`Remover ${title}`}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
           )}
-        </ul>
+        </div>
+        <div className="border border-border rounded-xl bg-card shadow-sm flex flex-col flex-1 overflow-hidden">
+          <ul className="divide-y divide-border/50 p-2 flex-1">
+            {docs.length === 0 ? (
+              <p className="text-sm text-muted-foreground p-4 text-center">Nenhum documento.</p>
+            ) : (
+              docs.map(renderExtraItem)
+            )}
+          </ul>
+          {title.startsWith('Fiador') && (
+            <div className="p-2 border-t border-border/50 bg-muted/30">
+              <button 
+                onClick={() => {
+                  setNewDocForm(prev => ({ ...prev, categoria: title }));
+                  document.getElementById(`new-doc-input-${checklist.id}`)?.focus();
+                }}
+                className="w-full text-xs font-medium text-orange-600 hover:text-orange-700 flex items-center justify-center gap-1.5 py-1.5 rounded-lg hover:bg-orange-100/50 transition-colors"
+              >
+                <Plus className="h-3 w-3" /> Adicionar Documento
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
@@ -266,6 +393,21 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             {renderCategoryDocs('Locatário / Inquilino', d => d.categoria === 'Locatário', 'bg-primary')}
             {renderCategoryDocs('Locador / Proprietário', d => d.categoria === 'Locador', 'bg-brand-navy')}
             {renderCategoryDocs('Imóvel / Outros', d => ['Imóvel', 'Contratos', 'Outros'].includes(d.categoria), 'bg-secondary')}
+            
+            {Array.from(new Set(checklist.docsExtras.filter(d => d.categoria.startsWith('Fiador ')).map(d => d.categoria))).sort().map(fiadorCat => 
+              <React.Fragment key={fiadorCat}>
+                {renderCategoryDocs(fiadorCat, d => d.categoria === fiadorCat, 'bg-orange-500', () => handleRemoveFiador(fiadorCat))}
+              </React.Fragment>
+            )}
+          </div>
+
+          <div className="mt-6 flex items-center justify-end">
+            <button 
+              onClick={handleAddFiador}
+              className="flex items-center gap-2 bg-orange-100 text-orange-700 hover:bg-orange-200 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+            >
+              <Plus className="h-4 w-4" /> Adicionar Fiador
+            </button>
           </div>
 
           {/* Add Document Form */}
@@ -275,6 +417,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             </h5>
             <div className="flex flex-col sm:flex-row gap-2.5 items-center">
               <input 
+                id={`new-doc-input-${checklist.id}`}
                 type="text" 
                 placeholder="Nome do documento..."
                 value={newDocForm.nome}
@@ -284,7 +427,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
               />
               <select 
                 value={newDocForm.categoria}
-                onChange={e => setNewDocForm(prev => ({ ...prev, categoria: e.target.value as TabType }))}
+                onChange={e => setNewDocForm(prev => ({ ...prev, categoria: e.target.value }))}
                 className="w-full sm:w-48 text-sm rounded-lg border border-input bg-card px-3 py-2 outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-all shrink-0"
               >
                 <option value="Locatário">Locatário</option>
@@ -292,6 +435,9 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
                 <option value="Imóvel">Imóvel</option>
                 <option value="Contratos">Contratos</option>
                 <option value="Outros">Outros</option>
+                {Array.from(new Set(checklist.docsExtras.filter(d => d.categoria.startsWith('Fiador ')).map(d => d.categoria))).sort().map(fiadorCat => (
+                  <option key={fiadorCat} value={fiadorCat}>{fiadorCat}</option>
+                ))}
               </select>
               <button 
                 onClick={handleAddExtra}

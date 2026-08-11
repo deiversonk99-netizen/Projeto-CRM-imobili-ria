@@ -27,6 +27,7 @@ const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
     { id: uuidv4(), nome: 'Dados Bancários Proprietário', categoria: 'Locador', isFeito: false, pendencia: '' },
     
     // LOCATÁRIO
+    { id: uuidv4(), nome: 'Proposta de Locação', categoria: 'Locatário', isFeito: false, pendencia: '' },
     { id: uuidv4(), nome: 'CNH (CPF/RG)', categoria: 'Locatário', isFeito: false, pendencia: '' },
     { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locatário', isFeito: false, pendencia: '' },
     { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locatário', isFeito: false, pendencia: '' },
@@ -52,23 +53,35 @@ const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
   ];
 
   if (!jsonStr || jsonStr === '[]') {
-    return defaultDocs;
+    return defaultDocs.map(def => ({
+      ...def,
+      status: def.isFeito ? 'Feito' : 'Pendente'
+    }));
   }
   
   try {
     const parsed = JSON.parse(jsonStr) as DocumentoExtra[];
-    const result = [...parsed];
+    const result = parsed.map(doc => ({
+      ...doc,
+      status: doc.status || (doc.isFeito ? 'Feito' : 'Pendente')
+    }));
     
     // Adicionar novos documentos padrão que possam estar faltando em checklists antigos
     defaultDocs.forEach(def => {
       if (!result.some(r => r.nome === def.nome && r.categoria === def.categoria)) {
-        result.push(def);
+        result.push({
+          ...def,
+          status: def.isFeito ? 'Feito' : 'Pendente'
+        });
       }
     });
     
     return result;
   } catch (e) {
-    return defaultDocs;
+    return defaultDocs.map(def => ({
+      ...def,
+      status: def.isFeito ? 'Feito' : 'Pendente'
+    }));
   }
 }
 

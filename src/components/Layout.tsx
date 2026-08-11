@@ -149,7 +149,7 @@ export default function Layout({ children, activeTab, setActiveTab }: LayoutProp
         </header>
 
         <div className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-4xl p-4 md:p-6 lg:p-10">
+          <div className="mx-auto w-full max-w-[1600px] p-4 md:p-6 lg:p-8 xl:p-10">
             <div className="mb-6 hidden lg:flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-brand-navy text-balance">

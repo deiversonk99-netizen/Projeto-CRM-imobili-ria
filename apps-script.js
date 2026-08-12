@@ -127,30 +127,43 @@ function saveCadastro(cadastroData) {
   const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
   const sheet = ss.getSheetByName('Cadastros');
   
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][2]).trim() === String(cadastroData.contrato).trim()) {
-      return { error: 'Número de contrato já existe' };
+  const lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    // Only get the IDs and Contratos to check for duplicates and idempotency
+    const existingIds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    const existingContratos = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
+    
+    for (let i = 0; i < existingIds.length; i++) {
+      if (cadastroData.id && String(existingIds[i][0]) === String(cadastroData.id)) {
+        return { success: true, id: cadastroData.id, message: 'Idempotency: already saved' };
+      }
+      if (String(existingContratos[i][0]).trim() === String(cadastroData.contrato).trim()) {
+        return { error: 'Número de contrato já existe' };
+      }
     }
   }
 
-  const id = Utilities.getUuid();
-  const dataHora = new Date().toISOString();
+  const id = cadastroData.id || Utilities.getUuid();
+  const dataHora = cadastroData.dataHora || new Date().toISOString();
   
-  sheet.appendRow([
+  const newRow = [
     id, dataHora, cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
     cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
     cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
     cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
     cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
     cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
-  ]);
+  ];
+  
+  sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
   
   // Auto-create checklist
   const checklistSheet = ss.getSheetByName('Checklists');
-  checklistSheet.appendRow([
+  const checkLastRow = checklistSheet.getLastRow();
+  const checkRow = [
     id, cadastroData.contrato, false, false, false, false, false, '[]'
-  ]);
+  ];
+  checklistSheet.getRange(checkLastRow + 1, 1, 1, checkRow.length).setValues([checkRow]);
   
   return { success: true, id: id };
 }

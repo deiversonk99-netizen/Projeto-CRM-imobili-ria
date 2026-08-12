@@ -2,9 +2,9 @@ import { Cadastro, ChecklistDocs, TarefaConcluida, Usuario } from './types';
 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzL4JN0w6Kh_TM_V9A4V4YrgmfFMw-E8grL8ik6-HVsXeAKYc1JgqEQGCrNGUbYO0ou_g/exec';
 
-async function fetchGAS(payload: any) {
+async function fetchGAS(payload: any, customTimeout = 60000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), customTimeout);
   
   try {
     const response = await fetch(GAS_URL, {
@@ -26,6 +26,11 @@ async function fetchGAS(payload: any) {
       throw new Error(data.error);
     }
     return data;
+  } catch (error: any) {
+    if (error.name === 'AbortError') {
+      throw new Error('A operação demorou muito para responder (timeout). O servidor ainda pode estar processando a sua requisição.');
+    }
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -63,7 +68,7 @@ export const db = {
     }
   },
   
-  saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'>): Promise<void> => {
+  saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'> & { id?: string; dataHora?: string }): Promise<void> => {
     await fetchGAS({ action: 'saveCadastro', data: cadastro });
   },
 

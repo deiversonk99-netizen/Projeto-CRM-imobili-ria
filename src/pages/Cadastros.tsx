@@ -9,6 +9,7 @@ import { useToast } from '../components/ui/Toast'
 import { isValidDateDDMM, isValidPhone, maskDateDDMM, maskPhone } from '../utils/validations'
 import { getWhatsappLink } from '../utils/dates'
 import { ConfirmModal } from '../components/ui/ConfirmModal'
+import { v4 as uuidv4 } from 'uuid'
 
 const inputClass =
   'w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30'
@@ -38,6 +39,7 @@ export default function Cadastros() {
   
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [cadastroToDelete, setCadastroToDelete] = useState<string | null>(null)
+  const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
 
   const [formData, setFormData] = useState<Omit<Cadastro, 'id' | 'dataHora'>>({
     contrato: '',
@@ -173,6 +175,7 @@ export default function Cadastros() {
 
   const handleNew = () => {
     setEditingId(null)
+    setCurrentRequestId(uuidv4())
     setFormData({
       contrato: '',
       nomeProp: '',
@@ -255,13 +258,28 @@ export default function Cadastros() {
         await db.updateCadastro({ ...formData, id: editingId, dataHora: new Date().toISOString() })
         addToast('Cadastro atualizado com sucesso!', 'success')
       } else {
-        await db.saveCadastro(formData)
+        await db.saveCadastro({ ...formData, id: currentRequestId || uuidv4() })
         addToast('Cadastro salvo com sucesso!', 'success')
       }
       await refreshData()
       setView('list')
-    } catch {
-      addToast('Erro ao salvar os dados.', 'error')
+    } catch (error: any) {
+      if (error && error.message && error.message.includes('timeout')) {
+         addToast('A operação demorou muito. Verificando se o contrato foi salvo...', 'info')
+         try {
+           const newData = await refreshData();
+           if (!editingId && newData?.cads) {
+             const wasSaved = newData.cads.some((c: any) => String(c.contrato).trim() === String(formData.contrato).trim());
+             if (wasSaved) {
+                addToast('Apesar da demora, o cadastro foi salvo com sucesso!', 'success');
+                setView('list');
+                setLoading(false);
+                return;
+             }
+           }
+         } catch(e) {}
+      }
+      addToast(error?.message || 'Erro ao salvar os dados.', 'error')
     } finally {
       setLoading(false)
     }

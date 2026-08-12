@@ -8,7 +8,7 @@ interface DataContextProps {
   tarefas: TarefaConcluida[];
   loading: boolean;
   error: string | null;
-  refreshData: () => Promise<void>;
+  refreshData: () => Promise<any>;
   addTarefaLocally: (tarefa: TarefaConcluida) => void;
   removeTarefaLocally: (idTarefa: string) => void;
 }
@@ -41,6 +41,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCadastros(cads || []);
       setChecklists(checks || []);
       setTarefas(tars || []);
+      return { cads, checks, tars };
     } catch (err: any) {
       console.error('Error fetching data', err);
       setError(err.message || 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');

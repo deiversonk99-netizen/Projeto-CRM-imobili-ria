@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Cadastro } from '@/types';
+import { Cadastro } from '../types';
 import { Search, MessageSquare } from 'lucide-react';
 
 interface PromocoesProps {

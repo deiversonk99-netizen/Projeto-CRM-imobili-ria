@@ -4,9 +4,33 @@ export function getDaysUntilBirthday(birthDateStr: string): number {
   if (!birthDateStr) return -1;
   const today = startOfDay(new Date());
   
-  // Format MM-DD
-  const [, month, day] = birthDateStr.split('-');
-  const birthDateThisYear = new Date(today.getFullYear(), parseInt(month) - 1, parseInt(day));
+  let day: number, month: number;
+  
+  if (birthDateStr.includes('/')) {
+    const parts = birthDateStr.split('/');
+    day = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10);
+  } else if (birthDateStr.includes('-')) {
+    const parts = birthDateStr.split('-');
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        month = parseInt(parts[1], 10);
+        day = parseInt(parts[2], 10);
+      } else {
+        day = parseInt(parts[0], 10);
+        month = parseInt(parts[1], 10);
+      }
+    } else {
+      month = parseInt(parts[0], 10);
+      day = parseInt(parts[1], 10);
+    }
+  } else {
+    return -1;
+  }
+  
+  if (isNaN(day) || isNaN(month)) return -1;
+
+  const birthDateThisYear = new Date(today.getFullYear(), month - 1, day);
   
   if (birthDateThisYear < today) {
     birthDateThisYear.setFullYear(today.getFullYear() + 1);
@@ -15,13 +39,17 @@ export function getDaysUntilBirthday(birthDateStr: string): number {
   return differenceInDays(birthDateThisYear, today);
 }
 
-export function checkBirthday(birthDateStr: string): 'hoje' | 'proximo' | false {
+export function checkBirthday(birthDateStr: string): { dateStr: string; daysAway: number } | false {
   if (!birthDateStr) return false;
   
   const days = getDaysUntilBirthday(birthDateStr);
   
-  if (days === 0) return 'hoje';
-  if (days > 0 && days <= 7) return 'proximo';
+  if (days >= 0 && days <= 7) {
+    return {
+      dateStr: birthDateStr,
+      daysAway: days
+    };
+  }
   return false;
 }
 
@@ -42,7 +70,7 @@ export function getDaysUntil(dateStr: string): number {
   return differenceInDays(targetDate, today);
 }
 
-export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' | 'hoje' | 'proximo' | false {
+export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' | 'hoje' | '1_dia' | '5_dias' | false {
   if (!vencimentoStr) return false;
   
   const today = startOfDay(new Date());
@@ -67,7 +95,8 @@ export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' |
   }
   
   if (diffDays === 0) return 'hoje';
-  if (diffDays <= 5) return 'proximo';
+  if (diffDays === 1) return '1_dia';
+  if (diffDays > 1 && diffDays <= 5) return '5_dias';
   
   return false;
 }

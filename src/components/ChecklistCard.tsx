@@ -97,11 +97,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             categoria: doc.categoria,
             isFeito: false,
             pendencia: '',
-            status: 'Pendente'
+            status: 'Pendente' as any
           })
         }
       }
-      return { ...prev, docsExtras: newDocs }
+      return { ...prev, docsExtras: newDocs as any[] }
     })
   }
 
@@ -113,7 +113,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
           return { 
             ...d, 
             isFeito: nextIsFeito,
-            status: nextIsFeito ? 'Feito' : 'Pendente' 
+            status: (nextIsFeito ? 'Feito' : 'Pendente') as any 
           }
         }
         return d
@@ -130,11 +130,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             categoria: doc.categoria,
             isFeito: false,
             pendencia: '',
-            status: 'Pendente'
+            status: 'Pendente' as any
           })
         }
       }
-      return { ...prev, docsExtras: newDocs }
+      return { ...prev, docsExtras: newDocs as any[] }
     })
   }
 

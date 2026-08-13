@@ -126,46 +126,79 @@ function getSheetData(sheetName) {
 function saveCadastro(cadastroData) {
   const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
   const sheet = ss.getSheetByName('Cadastros');
+  const checklistSheet = ss.getSheetByName('Checklists');
   
   const lastRow = sheet.getLastRow();
+  let cadastroExists = false;
+  
   if (lastRow > 1) {
     // Only get the IDs and Contratos to check for duplicates and idempotency
     const existingIds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
     const existingContratos = sheet.getRange(2, 3, lastRow - 1, 1).getValues();
     
     for (let i = 0; i < existingIds.length; i++) {
-      if (cadastroData.id && String(existingIds[i][0]) === String(cadastroData.id)) {
-        return { success: true, id: cadastroData.id, message: 'Idempotency: already saved' };
+      const rowId = String(existingIds[i][0]);
+      const rowContrato = String(existingContratos[i][0]).trim();
+      const inputId = cadastroData.id ? String(cadastroData.id) : null;
+      const inputContrato = String(cadastroData.contrato).trim();
+      
+      if (inputId && rowId === inputId) {
+        if (rowContrato !== inputContrato) {
+          return { error: 'Conflito de ID: O mesmo ID foi enviado para um contrato diferente.' };
+        }
+        cadastroExists = true;
       }
-      if (String(existingContratos[i][0]).trim() === String(cadastroData.contrato).trim()) {
+      
+      if (rowContrato === inputContrato && (!inputId || rowId !== inputId)) {
         return { error: 'Número de contrato já existe' };
       }
     }
   }
 
   const id = cadastroData.id || Utilities.getUuid();
-  const dataHora = cadastroData.dataHora || new Date().toISOString();
+
+  if (!cadastroExists) {
+    const dataHora = cadastroData.dataHora || new Date().toISOString();
+    
+    const newRow = [
+      id, dataHora, cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
+      cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
+      cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
+      cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
+      cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
+      cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
+    ];
+    
+    // Always get last row right before writing inside the lock
+    sheet.getRange(sheet.getLastRow() + 1, 1, 1, newRow.length).setValues([newRow]);
+  }
   
-  const newRow = [
-    id, dataHora, cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
-    cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
-    cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
-    cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
-    cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
-    cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
-  ];
-  
-  sheet.getRange(lastRow + 1, 1, 1, newRow.length).setValues([newRow]);
-  
-  // Auto-create checklist
-  const checklistSheet = ss.getSheetByName('Checklists');
+  // Reconcile checklist
+  let checklistExists = false;
   const checkLastRow = checklistSheet.getLastRow();
-  const checkRow = [
-    id, cadastroData.contrato, false, false, false, false, false, '[]'
-  ];
-  checklistSheet.getRange(checkLastRow + 1, 1, 1, checkRow.length).setValues([checkRow]);
   
-  return { success: true, id: id };
+  if (checkLastRow > 1) {
+    const checklistIds = checklistSheet.getRange(2, 1, checkLastRow - 1, 1).getValues();
+    for (let i = 0; i < checklistIds.length; i++) {
+      if (String(checklistIds[i][0]) === String(id)) {
+        checklistExists = true;
+        break;
+      }
+    }
+  }
+  
+  if (!checklistExists) {
+    const checkRow = [
+      id, cadastroData.contrato, false, false, false, false, false, '[]'
+    ];
+    checklistSheet.getRange(checklistSheet.getLastRow() + 1, 1, 1, checkRow.length).setValues([checkRow]);
+    
+    if (cadastroExists) {
+       return { success: true, id: id, message: 'Idempotency: checklist repaired' };
+    }
+  }
+  
+  return { success: true, id: id, message: cadastroExists ? 'Idempotency: already saved' : 'Created' };
 }
 
 function updateCadastro(cadastroData) {

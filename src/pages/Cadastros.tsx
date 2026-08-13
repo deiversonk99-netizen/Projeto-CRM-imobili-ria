@@ -99,6 +99,7 @@ export default function Cadastros() {
 
   const handleEdit = (cadastro: Cadastro) => {
     setEditingId(cadastro.id)
+    setCurrentRequestId(null)
     setFormData({
       contrato: cadastro.contrato,
       nomeProp: cadastro.nomeProp,

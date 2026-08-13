@@ -18,7 +18,11 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
     });
     
     if (response.status === 404) {
-      throw new Error('ENDPOINT_NOT_FOUND: a implantação do Google Apps Script não foi encontrada.');
+      if (response.url && response.url.includes('script.googleusercontent.com')) {
+        throw new Error('REDIRECT_FAILED: O Google Apps Script tentou redirecionar a resposta, mas a URL expirou ou falhou. É possível que os dados tenham sido salvos.');
+      } else {
+        throw new Error('ENDPOINT_NOT_FOUND: a implantação do Google Apps Script não foi encontrada.');
+      }
     }
 
     if (!response.ok) {
@@ -103,8 +107,8 @@ export const db = {
     }
   },
 
-  updateChecklist: async (checklist: ChecklistDocs): Promise<void> => {
-    await fetchGAS({ action: 'updateChecklist', data: checklist });
+  updateChecklist: async (checklist: ChecklistDocs & { operationId?: string, version?: number }): Promise<any> => {
+    return await fetchGAS({ action: 'updateChecklist', data: checklist });
   },
 
   getTarefas: async (): Promise<TarefaConcluida[]> => {

@@ -20,36 +20,36 @@ export interface ExtendedChecklist extends ChecklistDocs {
 const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
   const defaultDocs: DocumentoExtra[] = [
     // LOCADOR
-    { id: uuidv4(), nome: 'CNH (CPF/RG)', categoria: 'Locador', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locador', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locador', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Certidão de Nascimento', categoria: 'Locador', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Dados Bancários Proprietário', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locador_cnh', nome: 'CNH (CPF/RG)', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locador_comp_end', nome: 'Comprovante de Endereço', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locador_casamento', nome: 'Certidão de Casamento', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locador_nascimento', nome: 'Certidão de Nascimento', categoria: 'Locador', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locador_banco', nome: 'Dados Bancários Proprietário', categoria: 'Locador', isFeito: false, pendencia: '' },
     
     // LOCATÁRIO
-    { id: uuidv4(), nome: 'Proposta de Locação', categoria: 'Locatário', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'CNH (CPF/RG)', categoria: 'Locatário', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Comprovante de Endereço', categoria: 'Locatário', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Certidão de Casamento', categoria: 'Locatário', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Certidão de Nascimento', categoria: 'Locatário', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Comprovante de Renda (excluir se não aplica)', categoria: 'Locatário', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'SERASA (excluir se não aplica)', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_proposta', nome: 'Proposta de Locação', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_cnh', nome: 'CNH (CPF/RG)', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_comp_end', nome: 'Comprovante de Endereço', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_casamento', nome: 'Certidão de Casamento', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_nascimento', nome: 'Certidão de Nascimento', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_renda', nome: 'Comprovante de Renda (excluir se não aplica)', categoria: 'Locatário', isFeito: false, pendencia: '' },
+    { id: 'doc_def_locatario_serasa', nome: 'SERASA (excluir se não aplica)', categoria: 'Locatário', isFeito: false, pendencia: '' },
 
     // IMÓVEL
-    { id: uuidv4(), nome: 'Conta Energia', categoria: 'Imóvel', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Conta de Água', categoria: 'Imóvel', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'IPTU', categoria: 'Imóvel', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Matrícula (ficha do imóvel)', categoria: 'Imóvel', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Transferência Energia', categoria: 'Imóvel', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Transferência Água', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: 'doc_def_imovel_energia', nome: 'Conta Energia', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: 'doc_def_imovel_agua', nome: 'Conta de Água', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: 'doc_def_imovel_iptu', nome: 'IPTU', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: 'doc_def_imovel_matricula', nome: 'Matrícula (ficha do imóvel)', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: 'doc_def_imovel_transf_energia', nome: 'Transferência Energia', categoria: 'Imóvel', isFeito: false, pendencia: '' },
+    { id: 'doc_def_imovel_transf_agua', nome: 'Transferência Água', categoria: 'Imóvel', isFeito: false, pendencia: '' },
 
     // CONTRATOS
-    { id: uuidv4(), nome: 'Contrato de Locação', categoria: 'Contratos', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Contrato de Intermediação', categoria: 'Contratos', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Seguro Incêndio (Proprietário, Inquilino ou Isento)', categoria: 'Contratos', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Garantia (Seguro Fiança, Fiador, Caução, etc.)', categoria: 'Contratos', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Termo de Entrega de Chaves', categoria: 'Contratos', isFeito: false, pendencia: '' },
-    { id: uuidv4(), nome: 'Vistoria de Entrada', categoria: 'Contratos', isFeito: false, pendencia: '' }
+    { id: 'doc_def_contrato_locacao', nome: 'Contrato de Locação', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: 'doc_def_contrato_intermed', nome: 'Contrato de Intermediação', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: 'doc_def_contrato_incendio', nome: 'Seguro Incêndio (Proprietário, Inquilino ou Isento)', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: 'doc_def_contrato_garantia', nome: 'Garantia (Seguro Fiança, Fiador, Caução, etc.)', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: 'doc_def_contrato_chaves', nome: 'Termo de Entrega de Chaves', categoria: 'Contratos', isFeito: false, pendencia: '' },
+    { id: 'doc_def_contrato_vistoria', nome: 'Vistoria de Entrada', categoria: 'Contratos', isFeito: false, pendencia: '' }
   ];
 
   if (!jsonStr || jsonStr === '[]') {
@@ -78,6 +78,7 @@ const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
     
     return result;
   } catch (e) {
+    console.error("Invalid JSON in documentos_json", e);
     return defaultDocs.map(def => ({
       ...def,
       status: def.isFeito ? 'Feito' : 'Pendente'

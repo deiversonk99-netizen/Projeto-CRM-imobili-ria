@@ -12,7 +12,7 @@ function setupSpreadsheet() {
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
       'inq_manualEntregue', 'inq_vistoriaAssinada', 'inq_seguroIncendio',
-      'documentos_json'
+      'documentos_json', 'version', 'operationId'
     ],
     'Tarefas': [
       'idTarefa', 'dataConclusao', 'contrato', 'tipo', 'usuario', 'referencia'
@@ -102,7 +102,7 @@ function getSheetData(sheetName) {
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
       'inq_manualEntregue', 'inq_vistoriaAssinada', 'inq_seguroIncendio',
-      'documentos_json'
+      'documentos_json', 'version', 'operationId'
     ],
     'Tarefas': [
       'idTarefa', 'dataConclusao', 'contrato', 'tipo', 'usuario', 'referencia'
@@ -192,7 +192,7 @@ function saveCadastro(cadastroData) {
   
   if (!checklistExists) {
     const checkRow = [
-      id, cadastroData.contrato, false, false, false, false, false, '[]'
+      id, cadastroData.contrato, false, false, false, false, false, '[]', 1, ''
     ];
     checklistSheet.getRange(checklistSheet.getLastRow() + 1, 1, 1, checkRow.length).setValues([checkRow]);
     
@@ -280,20 +280,42 @@ function deleteCadastro(id) {
 
 function updateChecklist(checklistData) {
   const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Checklists');
-  const data = sheet.getDataRange().getValues();
+  const lastRow = sheet.getLastRow();
   
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === checklistData.id) {
-      const rowIndex = i + 1;
-      sheet.getRange(rowIndex, 3, 1, 6).setValues([[
+  if (lastRow <= 1) return { error: 'Checklist not found' };
+  
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(checklistData.id)) {
+      const rowIndex = i + 2;
+      
+      // Check version and operationId to prevent conflicts and ensure idempotency
+      const metaValues = sheet.getRange(rowIndex, 9, 1, 2).getValues()[0];
+      const currentVersion = Number(metaValues[0]) || 1;
+      const lastOperationId = metaValues[1];
+      
+      if (checklistData.operationId && String(lastOperationId) === String(checklistData.operationId)) {
+        return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: currentVersion };
+      }
+      
+      if (checklistData.version && currentVersion !== Number(checklistData.version)) {
+        return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT' };
+      }
+      
+      const nextVersion = currentVersion + 1;
+      
+      sheet.getRange(rowIndex, 3, 1, 8).setValues([[
         checklistData.prop_contratoEnviado,
         checklistData.prop_vistoriaEnviada,
         checklistData.inq_manualEntregue,
         checklistData.inq_vistoriaAssinada,
         checklistData.inq_seguroIncendio,
-        checklistData.documentos_json || '[]'
+        checklistData.documentos_json || '[]',
+        nextVersion,
+        checklistData.operationId || ''
       ]]);
-      return { success: true };
+      return { success: true, version: nextVersion, operationId: checklistData.operationId };
     }
   }
   return { error: 'Checklist not found' };

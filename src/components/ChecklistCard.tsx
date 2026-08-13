@@ -24,50 +24,99 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const [isExpanded, setIsExpanded] = useState(false)
   const [newDocForm, setNewDocForm] = useState({ nome: '', categoria: 'Locatário' })
   
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'idle'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'idle' | 'unsaved'>('idle')
   const { addToast } = useToast()
 
-  // Debounced auto-save
-  const debouncedChecklist = useDebounce(checklist, 1000)
-
-  // This ref ensures we don't save on initial mount
-  const isFirstRender = React.useRef(true)
-
-  useEffect(() => {
-    // Sync external updates (e.g. if we refresh data)
-    setChecklist(initialChecklist)
-  }, [initialChecklist])
+  const lastSavedState = React.useRef(initialChecklist);
+  const isSavingRef = React.useRef(false);
+  const syncQueueRef = React.useRef<ExtendedChecklist | null>(null);
+  const timerRef = React.useRef<NodeJS.Timeout>();
 
   useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false
-      return
-    }
-    
-    // Don't auto-save if they are exactly the same
-    if (JSON.stringify(debouncedChecklist) === JSON.stringify(initialChecklist)) return;
-
-    const performSave = async () => {
-      setSaveStatus('saving')
-      try {
-        const { docsExtras, ...baseChecklist } = debouncedChecklist
-        const dataToSave = {
-          ...baseChecklist,
-          documentos_json: JSON.stringify(docsExtras)
-        }
-        await db.updateChecklist(dataToSave)
-        setSaveStatus('saved')
-        onUpdate(debouncedChecklist)
-        setTimeout(() => setSaveStatus('idle'), 2000)
-      } catch (error) {
-        setSaveStatus('error')
-        addToast('Erro ao salvar automático', 'error')
+    const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
+    if (!isDirty) {
+      if (JSON.stringify(initialChecklist) !== JSON.stringify(lastSavedState.current)) {
+        // Apply external updates only if we don't have pending local changes
+        setChecklist(initialChecklist);
+        lastSavedState.current = initialChecklist;
       }
     }
+  }, [initialChecklist, checklist]);
 
-    performSave()
-  }, [debouncedChecklist, onUpdate, addToast])
+  useEffect(() => {
+    const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
+    if (!isDirty) return;
+
+    if (saveStatus !== 'saving' && saveStatus !== 'error') {
+      setSaveStatus('unsaved');
+    }
+
+    syncQueueRef.current = checklist;
+    
+    const performSave = async () => {
+      if (isSavingRef.current) return;
+      if (!syncQueueRef.current) return;
+
+      const targetToSave = syncQueueRef.current;
+      syncQueueRef.current = null;
+      isSavingRef.current = true;
+      setSaveStatus('saving');
+
+      const opId = uuidv4();
+      try {
+        const { docsExtras, ...baseChecklist } = targetToSave;
+        const dataToSave = {
+          ...baseChecklist,
+          documentos_json: JSON.stringify(docsExtras),
+          operationId: opId,
+          version: (targetToSave as any).version || 1
+        };
+        const res = await db.updateChecklist(dataToSave);
+        
+        const newVersion = res?.version || dataToSave.version + 1;
+        const savedState = { ...targetToSave, version: newVersion };
+        lastSavedState.current = savedState;
+        
+        setChecklist(prev => {
+            if (JSON.stringify(prev) === JSON.stringify(targetToSave)) {
+                return savedState;
+            }
+            return { ...prev, version: newVersion };
+        });
+
+        onUpdate(savedState);
+        setSaveStatus('saved');
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+            setSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
+        }, 3000);
+      } catch (err: any) {
+        const isTimeout = err?.message?.includes('TIMEOUT') || err?.name === 'AbortError';
+        const isRedirectFail = err?.message?.includes('REDIRECT_FAILED');
+        
+        if (isTimeout || isRedirectFail) {
+           addToast('Demora na rede ao salvar checklist. Verifique os dados.', 'info');
+        } else {
+           addToast('Erro ao salvar automático: ' + err.message, 'error');
+        }
+        setSaveStatus('error');
+        syncQueueRef.current = targetToSave; // Put it back to retry
+      } finally {
+        isSavingRef.current = false;
+        if (syncQueueRef.current && saveStatus !== 'error') {
+            setTimeout(performSave, 1000);
+        }
+      }
+    };
+
+    const debounceTimer = setTimeout(performSave, 1500);
+    return () => clearTimeout(debounceTimer);
+  }, [checklist, onUpdate, addToast, saveStatus]);
+
+  const handleRetry = () => {
+    setSaveStatus('unsaved');
+    setChecklist({ ...checklist }); // Trigger effect
+  }
 
   const total = checklist.docsExtras.length
   const done = checklist.docsExtras.filter(d => d.isFeito).length
@@ -357,9 +406,14 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             
             <div className="flex items-center gap-3">
               <div className="flex items-center text-xs font-medium text-muted-foreground min-w-[80px]">
+                {saveStatus === 'unsaved' && <><Loader2 className="h-3 w-3 mr-1.5 opacity-50" /> Aguardando...</>}
                 {saveStatus === 'saving' && <><Loader2 className="h-3 w-3 animate-spin mr-1.5" /> Salvando...</>}
                 {saveStatus === 'saved' && <><Check className="h-3 w-3 text-green-500 mr-1.5" /> Salvo</>}
-                {saveStatus === 'error' && <><AlertCircle className="h-3 w-3 text-red-500 mr-1.5" /> Erro</>}
+                {saveStatus === 'error' && (
+                  <button onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="flex items-center text-red-500 hover:text-red-700 transition-colors">
+                    <AlertCircle className="h-3 w-3 mr-1.5" /> Erro (Tentar Novamente)
+                  </button>
+                )}
               </div>
               <button 
                 className="p-1.5 rounded-full hover:bg-muted text-muted-foreground transition-colors"

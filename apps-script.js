@@ -6,7 +6,8 @@ function setupSpreadsheet() {
       'id', 'dataHora', 'contrato', 'nomeProp', 'telProp', 'niverProp',
       'nomeInq', 'telInq', 'niverInq', 'inicioContrato', 'fimContrato',
       'corretor', 'diaVencimento', 'enderecoImovel', 'tipoImovel', 'valorAluguel',
-      'comissao', 'emailProp', 'emailInq', 'status', 'finalidade', 'condominio'
+      'comissao', 'emailProp', 'emailInq', 'status', 'finalidade', 'condominio',
+      'version', 'operationId'
     ],
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
@@ -95,7 +96,8 @@ function getSheetData(sheetName) {
       'id', 'dataHora', 'contrato', 'nomeProp', 'telProp', 'niverProp',
       'nomeInq', 'telInq', 'niverInq', 'inicioContrato', 'fimContrato',
       'corretor', 'diaVencimento', 'enderecoImovel', 'tipoImovel', 'valorAluguel',
-      'comissao', 'emailProp', 'emailInq', 'status', 'finalidade', 'condominio'
+      'comissao', 'emailProp', 'emailInq', 'status', 'finalidade', 'condominio',
+      'version', 'operationId'
     ],
     'Checklists': [
       'id', 'contrato', 'prop_contratoEnviado', 'prop_vistoriaEnviada',
@@ -166,7 +168,8 @@ function saveCadastro(cadastroData) {
       cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
       cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
       cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
-      cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
+      cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || '',
+      1, '' // version (23rd col), operationId (24th col)
     ];
     
     // Always get last row right before writing inside the lock
@@ -214,15 +217,30 @@ function updateCadastro(cadastroData) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === cadastroData.id) {
       const rowIndex = i + 1;
-      sheet.getRange(rowIndex, 3, 1, 20).setValues([[
+      const currentRow = data[i];
+      const currentVersion = Number(currentRow[22]) || 1; // 23rd column (index 22)
+      const lastOperationId = currentRow[23]; // 24th column (index 23)
+
+      if (cadastroData.operationId && String(lastOperationId) === String(cadastroData.operationId)) {
+        return { success: true, status: 'already_updated', operationId: cadastroData.operationId };
+      }
+
+      if (cadastroData.expectedVersion && currentVersion !== Number(cadastroData.expectedVersion)) {
+        return { error: 'EDIT_CONFLICT: O cadastro foi modificado por outra pessoa.', code: 'EDIT_CONFLICT' };
+      }
+
+      const nextVersion = currentVersion + 1;
+
+      sheet.getRange(rowIndex, 3, 1, 22).setValues([[
         cadastroData.contrato, cadastroData.nomeProp, cadastroData.telProp,
         cadastroData.niverProp, cadastroData.nomeInq, cadastroData.telInq, cadastroData.niverInq,
         cadastroData.inicioContrato, cadastroData.fimContrato, cadastroData.corretor,
         cadastroData.diaVencimento, cadastroData.enderecoImovel || '', cadastroData.tipoImovel || '',
         cadastroData.valorAluguel || '', cadastroData.comissao || '', cadastroData.emailProp || '',
-        cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || ''
+        cadastroData.emailInq || '', cadastroData.status || 'Ativo', cadastroData.finalidade || '', cadastroData.condominio || '',
+        nextVersion, cadastroData.operationId || ''
       ]]);
-      return { success: true };
+      return { success: true, status: 'updated', operationId: cadastroData.operationId };
     }
   }
   return { error: 'Cadastro not found' };

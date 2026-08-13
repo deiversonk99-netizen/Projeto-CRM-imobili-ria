@@ -17,10 +17,20 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
       signal: controller.signal
     });
     
+    if (response.status === 404) {
+      throw new Error('ENDPOINT_NOT_FOUND: a implantação do Google Apps Script não foi encontrada.');
+    }
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP_${response.status}`);
     }
     
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!contentType.includes('application/json')) {
+      throw new Error('INVALID_RESPONSE: o servidor não retornou JSON.');
+    }
+
     const data = await response.json();
     if (data.error) {
       throw new Error(data.error);
@@ -28,7 +38,7 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
     return data;
   } catch (error: any) {
     if (error.name === 'AbortError') {
-      throw new Error('A operação demorou muito para responder (timeout). O servidor ainda pode estar processando a sua requisição.');
+      throw new Error('TIMEOUT: A operação demorou muito para responder (timeout). O servidor ainda pode estar processando a sua requisição.');
     }
     throw error;
   } finally {
@@ -72,7 +82,7 @@ export const db = {
     await fetchGAS({ action: 'saveCadastro', data: cadastro });
   },
 
-  updateCadastro: async (cadastro: Cadastro): Promise<void> => {
+  updateCadastro: async (cadastro: Cadastro & { operationId?: string, expectedVersion?: number }): Promise<void> => {
     await fetchGAS({ action: 'updateCadastro', data: cadastro });
   },
 

@@ -40,6 +40,8 @@ export default function Cadastros() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [cadastroToDelete, setCadastroToDelete] = useState<string | null>(null)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
+  const [currentEditOperationId, setCurrentEditOperationId] = useState<string | null>(null)
+  const [editVersion, setEditVersion] = useState<number>(1)
 
   const [formData, setFormData] = useState<Omit<Cadastro, 'id' | 'dataHora'>>({
     contrato: '',
@@ -100,6 +102,8 @@ export default function Cadastros() {
   const handleEdit = (cadastro: Cadastro) => {
     setEditingId(cadastro.id)
     setCurrentRequestId(null)
+    setCurrentEditOperationId(uuidv4())
+    setEditVersion((cadastro as any).version || 1)
     setFormData({
       contrato: cadastro.contrato,
       nomeProp: cadastro.nomeProp,
@@ -256,7 +260,7 @@ export default function Cadastros() {
     setLoading(true)
     try {
       if (editingId) {
-        await db.updateCadastro({ ...formData, id: editingId, dataHora: new Date().toISOString() })
+        await db.updateCadastro({ ...formData, id: editingId, dataHora: new Date().toISOString(), operationId: currentEditOperationId || undefined, expectedVersion: editVersion })
         addToast('Cadastro atualizado com sucesso!', 'success')
       } else {
         await db.saveCadastro({ ...formData, id: currentRequestId || uuidv4() })
@@ -265,22 +269,43 @@ export default function Cadastros() {
       await refreshData()
       setView('list')
     } catch (error: any) {
-      if (error && error.message && error.message.includes('timeout')) {
-         addToast('A operação demorou muito. Verificando se o contrato foi salvo...', 'info')
+      const isTimeout = error?.message?.includes('TIMEOUT') || error?.name === 'AbortError';
+      const isNotFound = error?.message?.includes('ENDPOINT_NOT_FOUND');
+
+      if (isNotFound) {
+        addToast('O serviço de dados não foi encontrado (404). Verifique a implantação do Google Apps Script.', 'error');
+      } else if (isTimeout) {
+         addToast('A operação demorou muito. Verificando se os dados foram salvos...', 'info')
          try {
            const newData = await refreshData();
-           if (!editingId && newData?.cads) {
-             const wasSaved = newData.cads.some((c: any) => String(c.contrato).trim() === String(formData.contrato).trim());
-             if (wasSaved) {
-                addToast('Apesar da demora, o cadastro foi salvo com sucesso!', 'success');
-                setView('list');
-                setLoading(false);
-                return;
+           if (newData?.cads) {
+             if (!editingId) {
+               const wasSaved = newData.cads.some((c: any) => String(c.contrato).trim() === String(formData.contrato).trim());
+               if (wasSaved) {
+                  addToast('Apesar da demora, o cadastro foi salvo com sucesso!', 'success');
+                  setView('list');
+                  setLoading(false);
+                  return;
+               }
+             } else {
+               const savedCad = newData.cads.find((c: any) => c.id === editingId);
+               if (savedCad) {
+                 const isMatch = savedCad.nomeProp === formData.nomeProp && savedCad.contrato === formData.contrato && savedCad.telProp === formData.telProp;
+                 if (isMatch) {
+                    addToast('Apesar da demora, a edição foi concluída com sucesso!', 'success');
+                    setView('list');
+                    setLoading(false);
+                    return;
+                 } else {
+                    addToast('A edição não pôde ser confirmada após o timeout. Tente novamente.', 'warning');
+                 }
+               }
              }
            }
          } catch(e) {}
+      } else {
+        addToast(error?.message || 'Erro ao salvar os dados.', 'error')
       }
-      addToast(error?.message || 'Erro ao salvar os dados.', 'error')
     } finally {
       setLoading(false)
     }

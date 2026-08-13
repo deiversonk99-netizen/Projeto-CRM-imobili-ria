@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { db } from '../store';
-import { Cadastro, ChecklistDocs, TarefaConcluida } from '../types';
+import { Cadastro, ChecklistDocs, TarefaConcluida, Condominio, Cobranca } from '../types';
 
 interface DataContextProps {
   cadastros: Cadastro[];
   checklists: ChecklistDocs[];
   tarefas: TarefaConcluida[];
+  condominios: Condominio[];
+  cobrancas: Cobranca[];
   loading: boolean;
   error: string | null;
   refreshData: () => Promise<any>;
@@ -19,6 +21,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [cadastros, setCadastros] = useState<Cadastro[]>([]);
   const [checklists, setChecklists] = useState<ChecklistDocs[]>([]);
   const [tarefas, setTarefas] = useState<TarefaConcluida[]>([]);
+  const [condominios, setCondominios] = useState<Condominio[]>([]);
+  const [cobrancas, setCobrancas] = useState<Cobranca[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,15 +37,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const refreshData = async () => {
     try {
       setError(null);
-      const [cads, checks, tars] = await Promise.all([
+      const [cads, checks, tars, conds, cobs] = await Promise.all([
         db.getCadastros(),
         db.getChecklists(),
         db.getTarefas(),
+        db.getCondominios(),
+        db.getCobrancas()
       ]);
       setCadastros(cads || []);
       setChecklists(checks || []);
       setTarefas(tars || []);
-      return { cads, checks, tars };
+      setCondominios(conds || []);
+      setCobrancas(cobs || []);
+      return { cads, checks, tars, conds, cobs };
     } catch (err: any) {
       console.error('Error fetching data', err);
       setError(err.message || 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');
@@ -53,7 +61,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <DataContext.Provider value={{ cadastros, checklists, tarefas, loading, error, refreshData, addTarefaLocally, removeTarefaLocally }}>
+    <DataContext.Provider value={{ cadastros, checklists, tarefas, condominios, cobrancas, loading, error, refreshData, addTarefaLocally, removeTarefaLocally }}>
       {children}
     </DataContext.Provider>
   );

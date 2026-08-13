@@ -16,6 +16,14 @@ function setupSpreadsheet() {
     ],
     'Tarefas': [
       'idTarefa', 'dataConclusao', 'contrato', 'tipo', 'usuario', 'referencia'
+    ],
+    'Condominios': [
+      'id', 'nome', 'nomeNormalizado', 'ativo', 'createdAt', 'operationId'
+    ],
+    'Cobrancas': [
+      'id', 'cadastroId', 'contrato', 'competencia', 'vencimento', 'valor',
+      'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'envioOperationId',
+      'version', 'createdAt', 'updatedAt'
     ]
   };
 
@@ -50,6 +58,10 @@ function doGet(e) {
     return jsonResponse(getSheetData('Checklists'));
   } else if (action === 'getTarefas') {
     return jsonResponse(getSheetData('Tarefas'));
+  } else if (action === 'getCondominios') {
+    return jsonResponse(getSheetData('Condominios'));
+  } else if (action === 'getCobrancas') {
+    return jsonResponse(getSheetData('Cobrancas'));
   }
   
   return jsonResponse({ error: "Action not found" });
@@ -74,6 +86,10 @@ function handleRequest(body) {
       return deleteCadastro(data.id);
     } else if (action === 'deleteTarefa') {
       return deleteTarefa(data.id);
+    } else if (action === 'upsertCondominio') {
+      return upsertCondominio(data.data);
+    } else if (action === 'upsertCobranca') {
+      return upsertCobranca(data.data);
     }
     
     return { error: 'Action not handled in POST' };
@@ -106,6 +122,14 @@ function getSheetData(sheetName) {
     ],
     'Tarefas': [
       'idTarefa', 'dataConclusao', 'contrato', 'tipo', 'usuario', 'referencia'
+    ],
+    'Condominios': [
+      'id', 'nome', 'nomeNormalizado', 'ativo', 'createdAt', 'operationId'
+    ],
+    'Cobrancas': [
+      'id', 'cadastroId', 'contrato', 'competencia', 'vencimento', 'valor',
+      'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'envioOperationId',
+      'version', 'createdAt', 'updatedAt'
     ]
   };
 
@@ -345,6 +369,149 @@ function deleteTarefa(id) {
     }
   }
   return { error: 'Tarefa not found' };
+}
+
+function upsertCondominio(condoData) {
+  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
+  const sheet = ss.getSheetByName('Condominios');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  // Try to update existing by id or operationId
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const id = row[headers.indexOf('id')];
+    const opId = row[headers.indexOf('operationId')];
+    
+    if (id === condoData.id || (condoData.operationId && opId === condoData.operationId)) {
+      // Update
+      const updateRow = [];
+      headers.forEach(header => {
+        updateRow.push(condoData[header] !== undefined ? condoData[header] : row[headers.indexOf(header)]);
+      });
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([updateRow]);
+      return { success: true, updated: true, data: condoData };
+    }
+  }
+  
+  // Create new
+  const newRow = [];
+  headers.forEach(header => {
+    newRow.push(condoData[header] || "");
+  });
+  sheet.appendRow(newRow);
+  return { success: true, created: true, data: condoData };
+}
+
+function upsertCobranca(cobrancaData) {
+  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
+  const sheet = ss.getSheetByName('Cobrancas');
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  // Try to update existing by id or operationId
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const id = row[headers.indexOf('id')];
+    const opId = row[headers.indexOf('envioOperationId')];
+    
+    if (id === cobrancaData.id || (cobrancaData.envioOperationId && opId === cobrancaData.envioOperationId)) {
+      // Update
+      const currentVersion = row[headers.indexOf('version')] || 1;
+      const incomingVersion = cobrancaData.version || 1;
+      
+      if (incomingVersion < currentVersion) {
+         return { error: 'COBRANCA_CONFLICT', message: 'Versão mais antiga' };
+      }
+      
+      cobrancaData.version = currentVersion + 1;
+      cobrancaData.updatedAt = new Date().toISOString();
+      
+      const updateRow = [];
+      headers.forEach(header => {
+        updateRow.push(cobrancaData[header] !== undefined ? cobrancaData[header] : row[headers.indexOf(header)]);
+      });
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([updateRow]);
+      return { success: true, updated: true, data: cobrancaData };
+    }
+  }
+  
+  // Create new
+  cobrancaData.version = 1;
+  cobrancaData.createdAt = new Date().toISOString();
+  cobrancaData.updatedAt = cobrancaData.createdAt;
+  
+  const newRow = [];
+  headers.forEach(header => {
+    newRow.push(cobrancaData[header] || "");
+  });
+  sheet.appendRow(newRow);
+  return { success: true, created: true, data: cobrancaData };
+}
+
+function gerarCobrancasMensais() {
+  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
+  const sheetCadastros = ss.getSheetByName('Cadastros');
+  const sheetCobrancas = ss.getSheetByName('Cobrancas');
+  
+  const cadastrosData = getSheetData('Cadastros');
+  const cobrancasData = getSheetData('Cobrancas');
+  
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const competencia = `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
+  
+  // Set of existing cobrancas for this month
+  const existingCobrancas = new Set(
+    cobrancasData
+      .filter(c => c.competencia === competencia)
+      .map(c => c.cadastroId)
+  );
+  
+  const newCobrancas = [];
+  const headers = ss.getSheetByName('Cobrancas').getDataRange().getValues()[0];
+  
+  cadastrosData.forEach(cad => {
+    if (cad.status === 'Encerrado') return;
+    if (existingCobrancas.has(cad.id)) return;
+    if (!cad.diaVencimento) return;
+    
+    const diaVenc = parseInt(cad.diaVencimento, 10);
+    if (isNaN(diaVenc)) return;
+    
+    // Calculate exact due date handling end of month
+    let targetDate = new Date(currentYear, currentMonth - 1, diaVenc);
+    if (targetDate.getMonth() !== currentMonth - 1) {
+      targetDate = new Date(currentYear, currentMonth, 0); // Last day of month
+    }
+    
+    const vencimentoStr = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}-${targetDate.getDate().toString().padStart(2, '0')}`;
+    
+    const novaCobranca = {
+      id: Utilities.getUuid(),
+      cadastroId: cad.id,
+      contrato: cad.contrato,
+      competencia: competencia,
+      vencimento: vencimentoStr,
+      valor: cad.valorAluguel || '',
+      statusPagamento: 'Pendente',
+      pagoEm: '',
+      envioConfirmadoEm: '',
+      envioOperationId: '',
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    const row = [];
+    headers.forEach(h => row.push(novaCobranca[h] || ""));
+    newCobrancas.push(row);
+  });
+  
+  if (newCobrancas.length > 0) {
+    sheetCobrancas.getRange(sheetCobrancas.getLastRow() + 1, 1, newCobrancas.length, headers.length).setValues(newCobrancas);
+  }
 }
 
 function jsonResponse(data) {

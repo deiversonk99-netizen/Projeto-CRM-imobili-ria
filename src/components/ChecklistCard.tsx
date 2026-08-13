@@ -30,7 +30,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const lastSavedState = React.useRef(initialChecklist);
   const isSavingRef = React.useRef(false);
   const syncQueueRef = React.useRef<ExtendedChecklist | null>(null);
-  const timerRef = React.useRef<NodeJS.Timeout>();
+  const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);

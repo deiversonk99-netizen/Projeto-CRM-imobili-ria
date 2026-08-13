@@ -39,12 +39,14 @@ export function getDaysUntilBirthday(birthDateStr: string): number {
   return differenceInDays(birthDateThisYear, today);
 }
 
+export const BIRTHDAY_WINDOW_DAYS = 3;
+
 export function checkBirthday(birthDateStr: string): { dateStr: string; daysAway: number } | false {
   if (!birthDateStr) return false;
   
   const days = getDaysUntilBirthday(birthDateStr);
   
-  if (days >= 0 && days <= 7) {
+  if (days >= 0 && days <= BIRTHDAY_WINDOW_DAYS) {
     return {
       dateStr: birthDateStr,
       daysAway: days
@@ -70,7 +72,7 @@ export function getDaysUntil(dateStr: string): number {
   return differenceInDays(targetDate, today);
 }
 
-export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' | 'hoje' | '1_dia' | '5_dias' | false {
+export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' | 'hoje' | '1_dia' | '2_dias' | '3_dias' | false {
   if (!vencimentoStr) return false;
   
   const today = startOfDay(new Date());
@@ -79,24 +81,27 @@ export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' |
   
   const day = typeof vencimentoStr === 'string' ? parseInt(vencimentoStr) : vencimentoStr;
   
-  // Vencimento of current month
+  // Try current month's vencimento
   let vencimentoDate = new Date(currentYear, currentMonth, day);
   
-  const diffTime = vencimentoDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  // If vencimento passed by more than 15 days, check next month's vencimento
+  let diffTime = vencimentoDate.getTime() - today.getTime();
+  let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   
-  if (diffDays < 0) {
-    // If it's more than 20 days ago, it might be for next month already?
-    // Simplified logic: just say delayed if in past of this month
-    if (diffDays > -20) {
-      return 'atrasado';
-    }
-    return false;
+  if (diffDays < -15) {
+    vencimentoDate = new Date(currentYear, currentMonth + 1, day);
+    diffTime = vencimentoDate.getTime() - today.getTime();
+    diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } else if (diffDays > 20) {
+    // If it's more than 20 days in the future, it might be looking at next month when it shouldn't,
+    // but typically diffDays > 20 means it's far away.
   }
   
+  if (diffDays < 0) return 'atrasado';
   if (diffDays === 0) return 'hoje';
   if (diffDays === 1) return '1_dia';
-  if (diffDays > 1 && diffDays <= 5) return '5_dias';
+  if (diffDays === 2) return '2_dias';
+  if (diffDays === 3) return '3_dias';
   
   return false;
 }

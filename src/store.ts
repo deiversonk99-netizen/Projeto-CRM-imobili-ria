@@ -50,36 +50,35 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
   }
 }
 
+async function fetchGET(action: string) {
+  const response = await fetch(`${GAS_URL}?action=${action}`, { credentials: 'omit' });
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(`[404] Rota "${action}" não encontrada. Verifique se você publicou a NOVA VERSÃO no Apps Script.`);
+    }
+    throw new Error(`Failed to fetch ${action}: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 export const db = {
   getUsuarios: async (): Promise<Usuario[]> => {
     try {
-      const response = await fetch(`${GAS_URL}?action=getUsuarios`, { credentials: 'omit' });
-      if (!response.ok) throw new Error('Failed to fetch usuarios');
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      const users = data;
-      // ensure we have the users
-      if (Array.isArray(users)) return users;
-      return [];
-    } catch (e) {
-      console.warn("getUsuarios fallback used", e);
+      const users = await fetchGET('getUsuarios');
+      if (users && users.length > 0) return users;
       return [
         { id: "1", nome: "João Silva", email: "joao@example.com", login: "joao", senha: "123", interfaces: [1, 3] },
         { id: "2", nome: "Admin", email: "admin@example.com", login: "admin", senha: "123", interfaces: [1, 2, 3, 4, 5, 99] }
       ];
+    } catch (e: any) {
+      // For users we can fallback to mock if it fails, or throw
+      throw e;
     }
   },
   getCadastros: async (): Promise<Cadastro[]> => {
-    try {
-      const response = await fetch(`${GAS_URL}?action=getCadastros`, { credentials: 'omit' });
-      if (!response.ok) throw new Error(`Failed to fetch cadastros: ${response.status} ${response.statusText}`);
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      return data;
-    } catch (e) {
-      console.warn("getCadastros fallback used", e);
-      return []; // Return empty array or fallback data
-    }
+    return fetchGET('getCadastros');
   },
   
   saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'> & { id?: string; dataHora?: string }): Promise<void> => {
@@ -95,16 +94,7 @@ export const db = {
   },
 
   getChecklists: async (): Promise<ChecklistDocs[]> => {
-    try {
-      const response = await fetch(`${GAS_URL}?action=getChecklists`, { credentials: 'omit' });
-      if (!response.ok) throw new Error(`Failed to fetch checklists: ${response.status} ${response.statusText}`);
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      return data;
-    } catch (e) {
-      console.warn("getChecklists fallback used", e);
-      return []; // Return empty array or fallback data
-    }
+    return fetchGET('getChecklists');
   },
 
   updateChecklist: async (checklist: ChecklistDocs & { operationId?: string, version?: number }): Promise<any> => {
@@ -112,16 +102,23 @@ export const db = {
   },
 
   getTarefas: async (): Promise<TarefaConcluida[]> => {
-    try {
-      const response = await fetch(`${GAS_URL}?action=getTarefas`, { credentials: 'omit' });
-      if (!response.ok) throw new Error(`Failed to fetch tarefas: ${response.status} ${response.statusText}`);
-      const data = await response.json();
-      if (data.error) throw new Error(data.error);
-      return data;
-    } catch (e) {
-      console.warn("getTarefas fallback used", e);
-      return [];
-    }
+    return fetchGET('getTarefas');
+  },
+
+  getCondominios: async (): Promise<any[]> => {
+    return fetchGET('getCondominios');
+  },
+
+  getCobrancas: async (): Promise<any[]> => {
+    return fetchGET('getCobrancas');
+  },
+
+  upsertCondominio: async (condo: any): Promise<any> => {
+    return await fetchGAS({ action: 'upsertCondominio', data: condo });
+  },
+
+  upsertCobranca: async (cobranca: any): Promise<any> => {
+    return await fetchGAS({ action: 'upsertCobranca', data: cobranca });
   },
 
   saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<TarefaConcluida> => {

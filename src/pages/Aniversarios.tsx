@@ -38,6 +38,8 @@ export default function Aniversarios() {
     const result: BirthdayItem[] = []
 
     cadastros.forEach((c) => {
+      if (c.status === 'Encerrado') return; // Ignore closed contracts
+
       const propBday = checkBirthday(c.niverProp)
       if (propBday) {
         result.push({
@@ -67,7 +69,12 @@ export default function Aniversarios() {
       }
     })
 
-    result.sort((a, b) => a.diasAte - b.diasAte)
+    result.sort((a, b) => {
+      if (a.diasAte !== b.diasAte) {
+        return a.diasAte - b.diasAte;
+      }
+      return a.nome.localeCompare(b.nome);
+    })
     setAniversariantes(result)
   }
 

@@ -10,6 +10,7 @@ import { isValidDateDDMM, isValidPhone, maskDateDDMM, maskPhone } from '../utils
 import { getWhatsappLink } from '../utils/dates'
 import { ConfirmModal } from '../components/ui/ConfirmModal'
 import { v4 as uuidv4 } from 'uuid'
+import { CondominioCombobox } from '../components/CondominioCombobox'
 
 const inputClass =
   'w-full rounded-xl border border-input bg-card px-3.5 py-2.5 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground/60 focus:border-primary focus:ring-2 focus:ring-ring/30'
@@ -297,7 +298,7 @@ export default function Cadastros() {
                     setLoading(false);
                     return;
                  } else {
-                    addToast('A edição não pôde ser confirmada após o timeout. Tente novamente.', 'warning');
+                    addToast('A edição não pôde ser confirmada após o timeout. Tente novamente.', 'error');
                  }
                }
              }
@@ -796,20 +797,11 @@ export default function Cadastros() {
               <label htmlFor="condominio" className={labelClass}>
                 Condomínio
               </label>
-              <select
-                id="condominio"
-                name="condominio"
+              <CondominioCombobox
                 value={formData.condominio || ''}
-                onChange={handleChange}
+                onChange={(val) => setFormData(prev => ({ ...prev, condominio: val }))}
                 className={inputClass}
-              >
-                <option value="">Nenhum / Não se aplica</option>
-                <option value="Vila Hadassas">Vila Hadassas</option>
-                <option value="Morro do Sol">Morro do Sol</option>
-                <option value="Bela Vista">Bela Vista</option>
-                <option value="Residencial Oregon">Residencial Oregon</option>
-                <option value="Outro">Outro</option>
-              </select>
+              />
             </div>
             <div>
               <label htmlFor="valorAluguel" className={labelClass}>

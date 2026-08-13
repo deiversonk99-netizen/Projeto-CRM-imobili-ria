@@ -43,7 +43,7 @@ export interface ChecklistDocs {
   documentos_json?: string;
 }
 
-export type TipoTarefa = 'Aniversário' | 'Boleto 5 dias' | 'Boleto 1 dia' | 'Boleto Hoje' | 'Boleto Atrasado';
+export type TipoTarefa = 'Aniversário' | 'Boleto 3 dias' | 'Boleto 2 dias' | 'Boleto 1 dia' | 'Boleto Hoje' | 'Boleto Atrasado' | 'Boleto Enviado';
 
 export interface TarefaConcluida {
   idTarefa: string;
@@ -51,7 +51,32 @@ export interface TarefaConcluida {
   tipo: TipoTarefa;
   dataConclusao: string;
   usuario: string;
-  referencia: string; // e.g., '2023' for birthdays, '2023-10' for boletos
+  referencia: string; // e.g., '2023' for birthdays, '2023-10' for boletos, or cobrancaId
+}
+
+export interface Condominio {
+  id: string;
+  nome: string;
+  nomeNormalizado: string;
+  ativo: boolean;
+  createdAt: string;
+  operationId?: string;
+}
+
+export interface Cobranca {
+  id: string;
+  cadastroId: string;
+  contrato: string;
+  competencia: string;
+  vencimento: string;
+  valor: number | string;
+  statusPagamento: 'Pendente' | 'Pago' | 'Cancelado';
+  pagoEm: string;
+  envioConfirmadoEm: string;
+  envioOperationId: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Usuario {

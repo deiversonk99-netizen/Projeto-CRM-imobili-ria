@@ -113,6 +113,10 @@ export const db = {
     return fetchGET('getCobrancas');
   },
 
+  syncCobrancas: async (): Promise<any> => {
+    return await fetchGAS({ action: 'syncCobrancas' });
+  },
+
   upsertCondominio: async (condo: any): Promise<any> => {
     return await fetchGAS({ action: 'upsertCondominio', data: condo });
   },

@@ -1,115 +1,60 @@
-'use client'
-
 import React, { useEffect, useState } from 'react'
 import { db } from '../store'
-import { checkBoletoWarning, getWhatsappLink } from '../utils/dates'
+import { checkCobrancaWarning, getWhatsappLink } from '../utils/dates'
 import { FileText, MessageCircle, CheckCircle, Loader2, Search, AlertTriangle, RefreshCw } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useToast } from '../components/ui/Toast'
-import { startOfDay, parseISO, isBefore, format } from 'date-fns'
+import { parseISO, format, isBefore, startOfDay } from 'date-fns'
 import type { Cobranca } from '../types'
-
-interface BoletoItem {
-  id: string
-  contrato: string
-  nomeInq: string
-  nomeProp: string
-  telefone: string
-  tipoAviso: '3_dias' | '2_dias' | '1_dia' | 'hoje'
-  diaVencimento: number
-  isFeito: boolean
-}
+import { v4 as uuidv4 } from 'uuid'
 
 export default function Boletos() {
-  const { cadastros, tarefas, cobrancas, refreshData, addTarefaLocally, removeTarefaLocally } = useData()
-  const [boletos, setBoletos] = useState<BoletoItem[]>([])
+  const { cadastros, cobrancas, refreshData } = useData()
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
   
-  // Tabs: 'envios' (Próximos 3 dias), 'pendencias' (Cobranças atrasadas)
   const [mainTab, setMainTab] = useState<'envios' | 'pendencias'>('envios')
-  // Sub-tabs for Envios:
   const [envioTab, setEnvioTab] = useState<'pendentes' | 'concluidos'>('pendentes')
-
   const [searchTerm, setSearchTerm] = useState('')
 
-  // Formato: YYYY-MM
-  const currentMonthRef = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-
-  const loadEnviosData = () => {
-    const doneIds = new Set(
-      tarefas
-        .filter((t) => t.tipo.startsWith('Boleto') && t.referencia === currentMonthRef)
-        .map((t) => `${t.contrato}-${t.tipo}`),
-    )
-
-    const result: BoletoItem[] = []
-
-    cadastros.forEach((c) => {
-      // Ignore inactive contracts
-      if (c.status && c.status !== 'Ativo') return;
-
-      const aviso = checkBoletoWarning(c.diaVencimento)
-      if (aviso && aviso !== 'atrasado') {
-        let tipoStr = 'Boleto Hoje'
-        if (aviso === '1_dia') tipoStr = 'Boleto 1 dia'
-        if (aviso === '2_dias') tipoStr = 'Boleto 2 dias'
-        if (aviso === '3_dias') tipoStr = 'Boleto 3 dias'
-
-        result.push({
-          id: c.id,
-          contrato: c.contrato,
-          nomeInq: c.nomeInq,
-          nomeProp: c.nomeProp,
-          telefone: c.telInq,
-          tipoAviso: aviso as any,
-          diaVencimento: c.diaVencimento,
-          isFeito: doneIds.has(`${c.contrato}-${tipoStr}`),
-        })
-      }
-    })
-    setBoletos(result)
-  }
-
   const { addToast } = useToast()
-  
+
+  // Sincroniza as cobranças no carregamento inicial da página
   useEffect(() => {
-    if (cadastros && tarefas) {
-      loadEnviosData()
-    }
-  }, [cadastros, tarefas, mainTab])
-
-  const toggleAction = async (item: BoletoItem, action: 'marcar' | 'desfazer') => {
-    setProcessingId(item.id)
-    let tipoStr = 'Boleto Hoje'
-    if (item.tipoAviso === '1_dia') tipoStr = 'Boleto 1 dia'
-    if (item.tipoAviso === '2_dias') tipoStr = 'Boleto 2 dias'
-    if (item.tipoAviso === '3_dias') tipoStr = 'Boleto 3 dias'
-
-    try {
-      if (action === 'marcar') {
-        const novaTarefa = {
-          contrato: String(item.contrato),
-          tipo: tipoStr as any,
-          usuario: 'Sistema',
-          referencia: currentMonthRef,
-        };
-        setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: true } : b))
-        const saved = await db.saveTarefa(novaTarefa)
-        addTarefaLocally(saved)
-        addToast('Aviso de boleto marcado como feito!', 'success')
-      } else {
-        const task = tarefas.find(t => t.tipo === tipoStr && t.referencia === currentMonthRef && String(t.contrato) === String(item.contrato))
-        if (task) {
-           setBoletos(prev => prev.map(b => b.id === item.id ? { ...b, isFeito: false } : b))
-           await db.deleteTarefa(task.idTarefa)
-           removeTarefaLocally(task.idTarefa)
-           addToast('Ação desfeita com sucesso!', 'success')
+    let mounted = true;
+    const syncAndLoad = async () => {
+      setLoading(true);
+      try {
+        await db.syncCobrancas();
+        if (mounted) {
+          await refreshData();
         }
+      } catch (err) {
+        console.error('Erro ao sincronizar cobranças', err);
+      } finally {
+        if (mounted) setLoading(false);
       }
-    } catch (error) {
-      addToast(`Erro ao ${action === 'marcar' ? 'marcar' : 'desfazer'} aviso de boleto.`, 'error')
-      await refreshData() // Revert optimistic update on error
+    };
+    syncAndLoad();
+    return () => { mounted = false };
+  }, []);
+
+  const toggleEnvioAction = async (cobranca: Cobranca, action: 'marcar' | 'desfazer') => {
+    setProcessingId(cobranca.id)
+    try {
+      const operationId = uuidv4();
+      const updatedData = {
+        ...cobranca,
+        envioConfirmadoEm: action === 'marcar' ? new Date().toISOString() : '',
+        envioOperationId: operationId
+      };
+      
+      await db.upsertCobranca(updatedData);
+      await refreshData();
+      addToast(`Aviso de boleto ${action === 'marcar' ? 'marcado como feito' : 'desfeito'}!`, 'success')
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao atualizar status do boleto.', 'error')
     } finally {
       setProcessingId(null)
     }
@@ -118,125 +63,142 @@ export default function Boletos() {
   const markCobrancaPago = async (cobranca: Cobranca) => {
     setProcessingId(cobranca.id)
     try {
-      const updated = {
+      const operationId = uuidv4();
+      const updatedData = {
         ...cobranca,
-        statusPagamento: 'Pago' as const,
-        pagoEm: new Date().toISOString()
+        statusPagamento: 'Pago',
+        pagoEm: new Date().toISOString(),
+        envioOperationId: operationId // Utilizando este campo para idempotencia geral
       };
-      await db.upsertCobranca(updated);
+      await db.upsertCobranca(updatedData);
       await refreshData();
-      addToast('Cobrança marcada como PAGA!', 'success');
-    } catch (e: any) {
-      addToast('Erro ao atualizar cobrança: ' + e.message, 'error');
+      addToast('Boleto baixado e marcado como pago!', 'success')
+    } catch (err) {
+      console.error(err);
+      addToast('Erro ao baixar boleto.', 'error')
     } finally {
       setProcessingId(null)
     }
   }
 
-  // ENVIOS LOGIC
-  const filteredBoletos = boletos.filter((b) => {
-    const term = searchTerm.toLowerCase()
-    return b.nomeInq.toLowerCase().includes(term) || String(b.contrato).toLowerCase().includes(term)
-  })
-
-  const enviosPendentes = filteredBoletos.filter(b => !b.isFeito)
-  const enviosConcluidos = filteredBoletos.filter(b => b.isFeito)
-  const currentEnviosList = envioTab === 'pendentes' ? enviosPendentes : enviosConcluidos
+  // Filtragem de dados
+  const term = searchTerm.toLowerCase()
   
-  const totalEnvios = filteredBoletos.length;
-  const progressPercent = totalEnvios === 0 ? 0 : Math.round((enviosConcluidos.length / totalEnvios) * 100);
-
-  const tresDias = currentEnviosList.filter((b) => b.tipoAviso === '3_dias')
-  const doisDias = currentEnviosList.filter((b) => b.tipoAviso === '2_dias')
-  const umDia = currentEnviosList.filter((b) => b.tipoAviso === '1_dia')
-  const hoje = currentEnviosList.filter((b) => b.tipoAviso === 'hoje')
-
-  // PENDÊNCIAS LOGIC
-  const today = startOfDay(new Date());
-  const pendingCobrancas = cobrancas.filter(c => {
+  // 1. Envios: Cobranças pendentes do mês atual com vencimento próximo
+  const enviosCobrancas = cobrancas.filter(c => {
     if (c.statusPagamento !== 'Pendente') return false;
-    const isLate = isBefore(startOfDay(parseISO(c.vencimento)), today);
-    if (!isLate) return false;
     
-    // Check search term
-    const term = searchTerm.toLowerCase()
-    const cadastro = cadastros.find(cad => cad.id === c.cadastroId)
-    const matchSearch = c.contrato.toLowerCase().includes(term) || (cadastro && cadastro.nomeInq.toLowerCase().includes(term));
+    const aviso = checkCobrancaWarning(c.vencimento);
+    if (!aviso || aviso === 'atrasado') return false; // Atrasados vão para pendências
     
-    return matchSearch;
+    const cadastro = cadastros.find(cad => cad.id === c.cadastroId);
+    if (!cadastro) return false;
+    
+    if (term) {
+      return String(c.contrato).toLowerCase().includes(term) || 
+             (cadastro.nomeInq && cadastro.nomeInq.toLowerCase().includes(term)) ||
+             (cadastro.nomeProp && cadastro.nomeProp.toLowerCase().includes(term));
+    }
+    return true;
   });
 
-  // RENDER HELPERS
-  const renderList = (lista: BoletoItem[], title: string, dotClass: string, textClass: string) => (
-    <div className="mb-8 last:mb-0">
-      <h3
-        className={`mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider ${textClass}`}
-      >
-        <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
-        {title}
-      </h3>
-      {lista.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3 text-sm italic text-muted-foreground">
-          Nenhuma cobrança para este período hoje.
-        </p>
-      ) : (
-        <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border">
-          {lista.map((item) => {
-            let text = ''
-            if (item.tipoAviso === '3_dias') {
-              text = `Olá ${item.nomeInq}, tudo bem? Passando para avisar que o boleto do seu aluguel (Contrato ${item.contrato}), com vencimento para o dia ${item.diaVencimento}, já está disponível para pagamento.`
-            } else if (item.tipoAviso === '2_dias') {
-              text = `Olá ${item.nomeInq}, tudo bem? Passando para lembrar que o vencimento do seu aluguel (Contrato ${item.contrato}) é daqui a 2 dias (dia ${item.diaVencimento}).`
-            } else if (item.tipoAviso === '1_dia') {
-              text = `Olá ${item.nomeInq}, tudo bem? Passando para lembrar que o vencimento do seu aluguel (Contrato ${item.contrato}) é amanhã, dia ${item.diaVencimento}.`
-            } else if (item.tipoAviso === 'hoje') {
-              text = `Olá ${item.nomeInq}, tudo bem? Passando para lembrar que o vencimento do seu aluguel (Contrato ${item.contrato}) é hoje, dia ${item.diaVencimento}.`
-            }
-            const isProcessing = processingId === item.id
+  const enviosPendentes = enviosCobrancas.filter(c => !c.envioConfirmadoEm)
+  const enviosConcluidos = enviosCobrancas.filter(c => c.envioConfirmadoEm)
+
+  const currentEnviosList = envioTab === 'pendentes' ? enviosPendentes : enviosConcluidos
+  const totalEnvios = enviosCobrancas.length
+  const progressPercent = totalEnvios === 0 ? 0 : Math.round((enviosConcluidos.length / totalEnvios) * 100)
+
+  // Separar em categorias de aviso (2_dias, 1_dia, hoje)
+  const hoje = currentEnviosList.filter(c => checkCobrancaWarning(c.vencimento) === 'hoje')
+  const umDia = currentEnviosList.filter(c => checkCobrancaWarning(c.vencimento) === '1_dia')
+  const doisDias = currentEnviosList.filter(c => checkCobrancaWarning(c.vencimento) === '2_dias')
+
+  // 2. Pendências: Cobranças pendentes e atrasadas
+  const pendingCobrancas = cobrancas.filter(c => {
+    if (c.statusPagamento !== 'Pendente') return false;
+    
+    // Check if it is atrasado
+    const today = startOfDay(new Date());
+    const vencDate = startOfDay(parseISO(c.vencimento));
+    if (!isBefore(vencDate, today)) return false;
+    
+    const cadastro = cadastros.find(cad => cad.id === c.cadastroId);
+    if (term) {
+      return String(c.contrato).toLowerCase().includes(term) || 
+             (cadastro?.nomeInq && cadastro.nomeInq.toLowerCase().includes(term));
+    }
+    return true;
+  });
+
+  const renderList = (items: Cobranca[], title: string, badgeBg: string, badgeText: string) => {
+    if (items.length === 0) return null
+
+    return (
+      <div className="mb-8 last:mb-0">
+        <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className={`h-2.5 w-2.5 rounded-full ${badgeBg}`} />
+          {title} ({items.length})
+        </h3>
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((cobranca) => {
+            const isProcessing = processingId === cobranca.id
+            const cadastro = cadastros.find(cad => cad.id === cobranca.cadastroId)
+            const text = `Olá ${cadastro?.nomeInq || ''}, tudo bem? Segue o aviso de vencimento do seu boleto referente ao Contrato ${cobranca.contrato}.`
 
             return (
               <li
-                key={item.id}
-                className="flex flex-col justify-between gap-4 bg-card p-4 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center"
+                key={cobranca.id}
+                className={`group relative flex flex-col justify-between rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/30 hover:shadow-md ${
+                  cobranca.envioConfirmadoEm ? 'opacity-60 grayscale-[0.5]' : ''
+                }`}
               >
                 <div>
-                  <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">{item.nomeInq}</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                      Contrato: {item.contrato}
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-bold text-foreground">
+                      Contrato: {cobranca.contrato}
+                    </span>
+                    <span className={`rounded-full bg-muted/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${badgeText}`}>
+                      {title.split('(')[0]}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground">Proprietário: {item.nomeProp}</p>
+                  <p className="text-sm font-medium text-foreground line-clamp-1">
+                    {cadastro?.nomeInq || 'Desconhecido'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                    <FileText className="h-3 w-3" />
+                    Venc: {format(parseISO(cobranca.vencimento), 'dd/MM/yyyy')}
+                  </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="mt-4 flex items-center gap-2">
                   <a
-                    href={getWhatsappLink(item.telefone, text)}
+                    href={getWhatsappLink(cadastro?.telInq, text)}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1.5 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-2 text-xs font-semibold text-white transition-all hover:brightness-105"
                   >
                     <MessageCircle className="h-4 w-4" />
                     Avisar
                   </a>
-                  {!item.isFeito ? (
+                  
+                  {cobranca.envioConfirmadoEm ? (
                     <button
-                      onClick={() => toggleAction(item, 'marcar')}
+                      onClick={() => toggleEnvioAction(cobranca, 'desfazer')}
                       disabled={isProcessing}
-                      className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
                     >
-                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin shrink-0" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
-                      {isProcessing ? 'Salvando' : 'Feito'}
+                      {isProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Desfazer
                     </button>
                   ) : (
                     <button
-                      onClick={() => toggleAction(item, 'desfazer')}
+                      onClick={() => toggleEnvioAction(cobranca, 'marcar')}
                       disabled={isProcessing}
-                      className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-card px-4 py-2 text-sm font-medium text-green-600 shadow-sm transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed w-[110px] justify-center whitespace-nowrap"
-                      title="Desfazer"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/20 disabled:opacity-50"
                     >
-                      {isProcessing ? <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" /> : <CheckCircle className="h-4 w-4 shrink-0" />}
-                      {isProcessing ? 'Aguarde' : 'Concluído'}
+                      {isProcessing ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle className="h-3 w-3" />}
+                      Feito
                     </button>
                   )}
                 </div>
@@ -244,19 +206,17 @@ export default function Boletos() {
             )
           })}
         </ul>
-      )}
-    </div>
-  )
+      </div>
+    )
+  }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="flex flex-col justify-between gap-4 border-b border-border bg-muted/50 px-6 py-5 sm:flex-row sm:items-center">
+    <div className="mx-auto max-w-5xl">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="flex items-center gap-2.5 text-lg font-bold text-brand-navy">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-secondary">
-              <FileText className="h-4.5 w-4.5 text-secondary-foreground" />
-            </span>
+          <h2 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
             Boletos e Cobranças
+            {loading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
           </h2>
           <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
             Acompanhe o envio de boletos (3 dias) e as inadimplências (Pendências).
@@ -339,16 +299,15 @@ export default function Boletos() {
               </div>
             </div>
 
-            {loading ? (
-              <div className="flex justify-center p-8 text-muted-foreground">Carregando...</div>
-            ) : currentEnviosList.length === 0 ? (
-              <div className="flex justify-center p-8 text-muted-foreground">Nenhum boleto {envioTab === 'pendentes' ? 'pendente' : 'concluído'} neste período.</div>
+            {currentEnviosList.length === 0 ? (
+              <div className="flex justify-center p-8 text-muted-foreground">
+                Nenhum boleto {envioTab === 'pendentes' ? 'pendente' : 'concluído'} neste período.
+              </div>
             ) : (
               <>
                 {renderList(hoje, 'Vence Hoje', 'bg-red-500', 'text-red-500')}
                 {renderList(umDia, 'Avisar Amanhã (1 dia)', 'bg-warning-foreground', 'text-warning-foreground')}
                 {renderList(doisDias, 'Avisar em 2 dias', 'bg-brand-navy', 'text-brand-navy')}
-                {renderList(tresDias, 'Avisar em 3 dias', 'bg-brand-navy', 'text-brand-navy')}
               </>
             )}
           </div>
@@ -391,7 +350,6 @@ export default function Boletos() {
                           Contrato: {cobranca.contrato} &bull; Comp: {cobranca.competencia} &bull; Valor: R$ {Number(cobranca.valor).toFixed(2)}
                         </p>
                       </div>
-
                       <div className="flex items-center gap-2">
                         <a
                           href={getWhatsappLink(cadastro?.telInq, text)}

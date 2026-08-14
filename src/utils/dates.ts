@@ -106,6 +106,23 @@ export function checkBoletoWarning(vencimentoStr: string | number): 'atrasado' |
   return false;
 }
 
+export function checkCobrancaWarning(vencimentoDateStr: string): 'atrasado' | 'hoje' | '1_dia' | '2_dias' | false {
+  if (!vencimentoDateStr) return false;
+  
+  const today = startOfDay(new Date());
+  const targetDate = startOfDay(parseISO(vencimentoDateStr));
+  
+  const diffTime = targetDate.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) return 'atrasado';
+  if (diffDays === 0) return 'hoje';
+  if (diffDays === 1) return '1_dia';
+  if (diffDays === 2) return '2_dias';
+  
+  return false;
+}
+
 export const getWhatsappLink = (phone: string | number | undefined | null, text: string) => {
   const phoneStr = phone != null ? String(phone) : '';
   const cleanPhone = phoneStr.replace(/\D/g, '');

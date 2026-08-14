@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { FileSignature, AlertCircle, FileCheck, Calendar as CalendarIcon, ArrowRight, UserRound, FileText, Wallet, TrendingUp, Building2, Home, RefreshCcw, PieChart as PieChartIcon } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
-import { checkBoletoWarning, checkBirthday } from '../utils/dates';
+import { checkCobrancaWarning, checkBirthday } from '../utils/dates';
 
 const StatCard = ({ icon: Icon, title, value, color, onClick }: any) => (
   <div 
@@ -20,7 +20,7 @@ const StatCard = ({ icon: Icon, title, value, color, onClick }: any) => (
 );
 
 export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
-  const { cadastros, checklists } = useData();
+  const { cadastros, checklists, cobrancas } = useData();
 
   const activeContractsCount = useMemo(() => {
     return cadastros.filter(c => c.status === 'Ativo' || !c.status).length;
@@ -97,12 +97,13 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
   const upcomingBirthdays = useMemo(() => {
     const list: { nome: string, tipo: string, dataStr: string, dias: number, contrato: string }[] = [];
     cadastros.forEach(c => {
+      if (c.status === 'Encerrado') return;
       const pBday = checkBirthday(c.niverProp);
-      if (pBday && pBday.daysAway <= 7) {
+      if (pBday && pBday.daysAway <= 3) {
         list.push({ nome: c.nomeProp, tipo: 'Proprietário', dataStr: pBday.dateStr, dias: pBday.daysAway, contrato: c.contrato });
       }
       const iBday = checkBirthday(c.niverInq);
-      if (iBday && iBday.daysAway <= 7) {
+      if (iBday && iBday.daysAway <= 3) {
         list.push({ nome: c.nomeInq, tipo: 'Inquilino', dataStr: iBday.dateStr, dias: iBday.daysAway, contrato: c.contrato });
       }
     });
@@ -110,15 +111,18 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
   }, [cadastros]);
 
   const upcomingBoletos = useMemo(() => {
-    const list: { contrato: string, inq: string, dia: number, aviso: string }[] = [];
-    cadastros.forEach(c => {
-      const aviso = checkBoletoWarning(c.diaVencimento);
-      if (aviso) {
-        list.push({ contrato: c.contrato, inq: c.nomeInq, dia: c.diaVencimento, aviso });
+    const list: { contrato: string, inq: string, aviso: string, vencimento: string }[] = [];
+    cobrancas.forEach(c => {
+      if (c.statusPagamento !== 'Pendente') return;
+      if (c.envioConfirmadoEm) return;
+      const aviso = checkCobrancaWarning(c.vencimento);
+      if (aviso && aviso !== 'atrasado') {
+        const cad = cadastros.find(cad => cad.id === c.cadastroId);
+        list.push({ contrato: c.contrato, inq: cad?.nomeInq || '', aviso, vencimento: c.vencimento });
       }
     });
-    return list.sort((a, b) => a.dia - b.dia).slice(0, 5);
-  }, [cadastros]);
+    return list.slice(0, 5);
+  }, [cobrancas, cadastros]);
 
   const extraStats = useMemo(() => {
     let encerrados = 0;
@@ -306,7 +310,7 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
                       <span className={`text-xs font-semibold px-2 py-1 rounded-md ${
                         b.aviso === 'atrasado' || b.aviso === 'hoje' ? 'bg-red-100 text-red-700' : 'bg-brand-navy/10 text-brand-navy'
                       }`}>
-                        Dia {b.dia}
+                        Venc: {b.vencimento.split('-').reverse().slice(0, 2).join('/')}
                       </span>
                     </div>
                   </li>
@@ -321,7 +325,7 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-brand-navy flex items-center gap-2">
                 <UserRound className="w-5 h-5" />
-                Aniversários (Próximos 7 dias)
+                Aniversários (Próximos 3 dias)
               </h3>
               <button onClick={() => setTab('aniversarios')} className="text-sm text-primary font-medium hover:underline flex items-center gap-1">
                 Ver todos <ArrowRight className="w-4 h-4" />

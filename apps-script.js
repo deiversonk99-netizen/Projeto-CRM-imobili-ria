@@ -38,7 +38,26 @@ function setupSpreadsheet() {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#d0e0e3");
     
-    // Congela a primeira linha
+    
+    // Seed condominios
+    if (sheetName === 'Condominios' && sheet.getLastRow() <= 1) {
+      const defaults = ['Vila Hadassas', 'Morro do Sol', 'Bela Vista', 'Residencial Oregon', 'Outro'];
+      const rows = defaults.map(nome => [
+        Utilities.getUuid(), nome, nome.toLowerCase(), true, new Date().toISOString(), Utilities.getUuid()
+      ]);
+      sheet.getRange(2, 1, rows.length, 6).setValues(rows);
+    }
+    
+    // Create trigger for gerarCobrancasMensais if it doesn't exist
+    const triggers = ScriptApp.getProjectTriggers();
+    const hasTrigger = triggers.some(t => t.getHandlerFunction() === 'gerarCobrancasMensais');
+    if (!hasTrigger) {
+      ScriptApp.newTrigger('gerarCobrancasMensais')
+        .timeBased()
+        .everyDays(1)
+        .atHour(1)
+        .create();
+    }
     sheet.setFrozenRows(1);
   }
 }
@@ -89,6 +108,9 @@ function handleRequest(body) {
     } else if (action === 'upsertCondominio') {
       return upsertCondominio(data.data);
     } else if (action === 'upsertCobranca') {
+      return upsertCobranca(data.data);
+    } else if (action === 'syncCobrancas') {
+      return syncCobrancas();
       return upsertCobranca(data.data);
     }
     
@@ -383,7 +405,8 @@ function upsertCondominio(condoData) {
     const id = row[headers.indexOf('id')];
     const opId = row[headers.indexOf('operationId')];
     
-    if (id === condoData.id || (condoData.operationId && opId === condoData.operationId)) {
+    const nomeNorm = row[headers.indexOf('nomeNormalizado')];
+    if (id === condoData.id || (condoData.operationId && opId === condoData.operationId) || (condoData.nomeNormalizado && nomeNorm === condoData.nomeNormalizado)) {
       // Update
       const updateRow = [];
       headers.forEach(header => {
@@ -416,6 +439,9 @@ function upsertCobranca(cobrancaData) {
     const opId = row[headers.indexOf('envioOperationId')];
     
     if (id === cobrancaData.id || (cobrancaData.envioOperationId && opId === cobrancaData.envioOperationId)) {
+      if (cobrancaData.envioOperationId && opId === cobrancaData.envioOperationId) {
+        return { success: true, updated: true, data: cobrancaData };
+      }
       // Update
       const currentVersion = row[headers.indexOf('version')] || 1;
       const incomingVersion = cobrancaData.version || 1;
@@ -474,6 +500,10 @@ function gerarCobrancasMensais() {
   
   cadastrosData.forEach(cad => {
     if (cad.status === 'Encerrado') return;
+    
+    // Check if contract is within valid dates
+    if (cad.inicioContrato && new Date(cad.inicioContrato) > targetDate) return;
+    if (cad.fimContrato && new Date(cad.fimContrato) < targetDate) return;
     if (existingCobrancas.has(cad.id)) return;
     if (!cad.diaVencimento) return;
     
@@ -517,4 +547,9 @@ function gerarCobrancasMensais() {
 function jsonResponse(data) {
   return ContentService.createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function syncCobrancas() {
+  gerarCobrancasMensais();
+  return { success: true };
 }

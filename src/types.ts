@@ -74,6 +74,7 @@ export interface Cobranca {
   pagoEm: string;
   envioConfirmadoEm: string;
   envioOperationId: string;
+  pagamentoOperationId?: string;
   version: number;
   createdAt: string;
   updatedAt: string;

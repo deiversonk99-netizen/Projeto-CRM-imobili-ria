@@ -346,7 +346,7 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted-foreground">Nenhum aniversário nos próximos 7 dias.</p>
+              <p className="text-sm text-muted-foreground">Nenhum aniversário nos próximos 3 dias.</p>
             )}
           </div>
         </div>

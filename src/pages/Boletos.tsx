@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { db } from '../store'
 import { checkCobrancaWarning, getWhatsappLink } from '../utils/dates'
 import { FileText, MessageCircle, CheckCircle, Loader2, Search, AlertTriangle, RefreshCw } from 'lucide-react'
@@ -12,6 +12,7 @@ export default function Boletos() {
   const { cadastros, cobrancas, refreshData } = useData()
   const [loading, setLoading] = useState(false)
   const [processingId, setProcessingId] = useState<string | null>(null)
+  const operationIds = useRef<Record<string, string>>({})
   
   const [mainTab, setMainTab] = useState<'envios' | 'pendencias'>('envios')
   const [envioTab, setEnvioTab] = useState<'pendentes' | 'concluidos'>('pendentes')
@@ -41,16 +42,21 @@ export default function Boletos() {
 
   const toggleEnvioAction = async (cobranca: Cobranca, action: 'marcar' | 'desfazer') => {
     setProcessingId(cobranca.id)
+    const opKey = `${cobranca.id}-envio`;
+    if (!operationIds.current[opKey]) {
+      operationIds.current[opKey] = uuidv4();
+    }
+    
     try {
-      const operationId = uuidv4();
       const updatedData = {
         ...cobranca,
         envioConfirmadoEm: action === 'marcar' ? new Date().toISOString() : '',
-        envioOperationId: operationId
+        envioOperationId: operationIds.current[opKey]
       };
       
       await db.upsertCobranca(updatedData);
       await refreshData();
+      delete operationIds.current[opKey]; // Clear on success
       addToast(`Aviso de boleto ${action === 'marcar' ? 'marcado como feito' : 'desfeito'}!`, 'success')
     } catch (err) {
       console.error(err);
@@ -62,16 +68,21 @@ export default function Boletos() {
 
   const markCobrancaPago = async (cobranca: Cobranca) => {
     setProcessingId(cobranca.id)
+    const opKey = `${cobranca.id}-pagamento`;
+    if (!operationIds.current[opKey]) {
+      operationIds.current[opKey] = uuidv4();
+    }
+    
     try {
-      const operationId = uuidv4();
       const updatedData = {
         ...cobranca,
-        statusPagamento: 'Pago',
+        statusPagamento: 'Pago' as any,
         pagoEm: new Date().toISOString(),
-        envioOperationId: operationId // Utilizando este campo para idempotencia geral
+        pagamentoOperationId: operationIds.current[opKey]
       };
       await db.upsertCobranca(updatedData);
       await refreshData();
+      delete operationIds.current[opKey]; // Clear on success
       addToast('Boleto baixado e marcado como pago!', 'success')
     } catch (err) {
       console.error(err);

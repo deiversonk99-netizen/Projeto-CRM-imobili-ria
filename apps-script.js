@@ -22,7 +22,7 @@ function setupSpreadsheet() {
     ],
     'Cobrancas': [
       'id', 'cadastroId', 'contrato', 'competencia', 'vencimento', 'valor',
-      'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'envioOperationId',
+      'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'envioOperationId', 'pagamentoOperationId',
       'version', 'createdAt', 'updatedAt'
     ]
   };
@@ -110,6 +110,9 @@ function handleRequest(body) {
     } else if (action === 'upsertCobranca') {
       return upsertCobranca(data.data);
     } else if (action === 'syncCobrancas') {
+      return syncCobrancas();
+    } else if (action === 'syncCobrancasHistoricas') {
+      return gerarCobrancasHistoricas();
       return syncCobrancas();
       return upsertCobranca(data.data);
     }
@@ -418,6 +421,9 @@ function upsertCondominio(condoData) {
   }
   
   // Create new
+  if (condoData.nome && !condoData.nomeNormalizado) {
+    condoData.nomeNormalizado = condoData.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
   const newRow = [];
   headers.forEach(header => {
     newRow.push(condoData[header] || "");
@@ -436,10 +442,11 @@ function upsertCobranca(cobrancaData) {
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const id = row[headers.indexOf('id')];
-    const opId = row[headers.indexOf('envioOperationId')];
+    const envioOpId = row[headers.indexOf('envioOperationId')];
+    const pagOpId = row[headers.indexOf('pagamentoOperationId')];
     
-    if (id === cobrancaData.id || (cobrancaData.envioOperationId && opId === cobrancaData.envioOperationId)) {
-      if (cobrancaData.envioOperationId && opId === cobrancaData.envioOperationId) {
+    if (id === cobrancaData.id || (cobrancaData.envioOperationId && envioOpId === cobrancaData.envioOperationId) || (cobrancaData.pagamentoOperationId && pagOpId === cobrancaData.pagamentoOperationId)) {
+      if ((cobrancaData.envioOperationId && envioOpId === cobrancaData.envioOperationId) || (cobrancaData.pagamentoOperationId && pagOpId === cobrancaData.pagamentoOperationId)) {
         return { success: true, updated: true, data: cobrancaData };
       }
       // Update
@@ -475,73 +482,95 @@ function upsertCobranca(cobrancaData) {
   return { success: true, created: true, data: cobrancaData };
 }
 
-function gerarCobrancasMensais() {
-  const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
-  const sheetCadastros = ss.getSheetByName('Cadastros');
-  const sheetCobrancas = ss.getSheetByName('Cobrancas');
-  
-  const cadastrosData = getSheetData('Cadastros');
-  const cobrancasData = getSheetData('Cobrancas');
-  
-  const today = new Date();
-  const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth() + 1;
-  const competencia = `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
-  
-  // Set of existing cobrancas for this month
-  const existingCobrancas = new Set(
-    cobrancasData
-      .filter(c => c.competencia === competencia)
-      .map(c => c.cadastroId)
-  );
-  
-  const newCobrancas = [];
-  const headers = ss.getSheetByName('Cobrancas').getDataRange().getValues()[0];
-  
-  cadastrosData.forEach(cad => {
-    if (cad.status === 'Encerrado') return;
+function gerarCobrancasMensais(monthsBack = 0) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
+    const sheetCobrancas = ss.getSheetByName('Cobrancas');
     
-    // Check if contract is within valid dates
-    if (cad.inicioContrato && new Date(cad.inicioContrato) > targetDate) return;
-    if (cad.fimContrato && new Date(cad.fimContrato) < targetDate) return;
-    if (existingCobrancas.has(cad.id)) return;
-    if (!cad.diaVencimento) return;
+    const cadastrosData = getSheetData('Cadastros');
+    const cobrancasData = getSheetData('Cobrancas');
+    const headers = sheetCobrancas.getDataRange().getValues()[0];
     
-    const diaVenc = parseInt(cad.diaVencimento, 10);
-    if (isNaN(diaVenc)) return;
+    const today = new Date();
     
-    // Calculate exact due date handling end of month
-    let targetDate = new Date(currentYear, currentMonth - 1, diaVenc);
-    if (targetDate.getMonth() !== currentMonth - 1) {
-      targetDate = new Date(currentYear, currentMonth, 0); // Last day of month
+    // Generate for current month, and optionally historical months
+    for (let offset = monthsBack; offset >= 0; offset--) {
+      let targetDateForMonth = new Date(today.getFullYear(), today.getMonth() - offset, 1);
+      const currentYear = targetDateForMonth.getFullYear();
+      const currentMonth = targetDateForMonth.getMonth() + 1;
+      const competencia = `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
+      
+      const existingCobrancas = new Set(
+        cobrancasData
+          .filter(c => c.competencia === competencia)
+          .map(c => c.cadastroId)
+      );
+      
+      const newCobrancas = [];
+      
+      cadastrosData.forEach(cad => {
+        if (cad.status === 'Encerrado') return;
+        if (existingCobrancas.has(cad.id)) return;
+        if (!cad.diaVencimento) return;
+        
+        const diaVenc = parseInt(cad.diaVencimento, 10);
+        if (isNaN(diaVenc)) return;
+        
+        let targetDate = new Date(currentYear, currentMonth - 1, diaVenc);
+        if (targetDate.getMonth() !== currentMonth - 1) {
+          targetDate = new Date(currentYear, currentMonth, 0);
+        }
+        
+        // Date boundaries
+        if (cad.inicioContrato && new Date(cad.inicioContrato) > targetDate) return;
+        if (cad.fimContrato && new Date(cad.fimContrato) < targetDate) return;
+        
+        const vencimentoStr = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}-${targetDate.getDate().toString().padStart(2, '0')}`;
+        
+        const novaCobranca = {
+          id: Utilities.getUuid(),
+          cadastroId: cad.id,
+          contrato: cad.contrato,
+          competencia: competencia,
+          vencimento: vencimentoStr,
+          valor: cad.valorAluguel || '',
+          statusPagamento: 'Pendente',
+          pagoEm: '',
+          envioConfirmadoEm: '',
+          envioOperationId: '',
+          pagamentoOperationId: '',
+          version: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        
+        const row = [];
+        headers.forEach(h => row.push(novaCobranca[h] || ""));
+        newCobrancas.push(row);
+      });
+      
+      if (newCobrancas.length > 0) {
+        sheetCobrancas.getRange(sheetCobrancas.getLastRow() + 1, 1, newCobrancas.length, headers.length).setValues(newCobrancas);
+        // Add to cobrancasData so subsequent loops know it exists if needed
+        newCobrancas.forEach(row => {
+           let obj = {};
+           headers.forEach((h, i) => obj[h] = row[i]);
+           cobrancasData.push(obj);
+        });
+      }
     }
-    
-    const vencimentoStr = `${targetDate.getFullYear()}-${(targetDate.getMonth() + 1).toString().padStart(2, '0')}-${targetDate.getDate().toString().padStart(2, '0')}`;
-    
-    const novaCobranca = {
-      id: Utilities.getUuid(),
-      cadastroId: cad.id,
-      contrato: cad.contrato,
-      competencia: competencia,
-      vencimento: vencimentoStr,
-      valor: cad.valorAluguel || '',
-      statusPagamento: 'Pendente',
-      pagoEm: '',
-      envioConfirmadoEm: '',
-      envioOperationId: '',
-      version: 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    const row = [];
-    headers.forEach(h => row.push(novaCobranca[h] || ""));
-    newCobrancas.push(row);
-  });
-  
-  if (newCobrancas.length > 0) {
-    sheetCobrancas.getRange(sheetCobrancas.getLastRow() + 1, 1, newCobrancas.length, headers.length).setValues(newCobrancas);
+  } catch (e) {
+    console.error(e);
+  } finally {
+    lock.releaseLock();
   }
+}
+
+function gerarCobrancasHistoricas() {
+  gerarCobrancasMensais(2); // Generate for current and last 2 months
+  return { success: true };
 }
 
 function jsonResponse(data) {

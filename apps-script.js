@@ -129,7 +129,7 @@ function handleRequest(body) {
   } catch (error) {
     return { error: error.toString() };
   } finally {
-    lock.releaseLock();
+    if (lock.hasLock()) lock.releaseLock();
   }
 }
 
@@ -491,7 +491,7 @@ function upsertCobranca(cobrancaData) {
 }
 
 function gerarCobrancasMensais(monthsBack, useLock) {
-  if (typeof monthsBack === 'object' || monthsBack === undefined) {
+  if (typeof monthsBack !== 'number') {
     monthsBack = 0;
     useLock = true;
   }
@@ -578,7 +578,7 @@ function gerarCobrancasMensais(monthsBack, useLock) {
     console.error(e);
     throw e;
   } finally {
-    if (lock) lock.releaseLock();
+    if (lock && lock.hasLock()) lock.releaseLock();
   }
 }
 

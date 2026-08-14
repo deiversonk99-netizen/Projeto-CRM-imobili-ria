@@ -33,6 +33,16 @@ function setupSpreadsheet() {
       sheet = ss.insertSheet(sheetName);
     }
     
+    // Migration logic for Cobrancas missing pagamentoOperationId
+    if (sheetName === 'Cobrancas' && sheet.getLastColumn() > 0) {
+      const existingHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      const indexEnvio = existingHeaders.indexOf('envioOperationId');
+      const indexPagamento = existingHeaders.indexOf('pagamentoOperationId');
+      if (indexEnvio !== -1 && indexPagamento === -1) {
+        sheet.insertColumnAfter(indexEnvio + 1);
+      }
+    }
+    
     // Configura os cabeçalhos
     const headers = sheetsConfig[sheetName];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -113,8 +123,6 @@ function handleRequest(body) {
       return syncCobrancas();
     } else if (action === 'syncCobrancasHistoricas') {
       return gerarCobrancasHistoricas();
-      return syncCobrancas();
-      return upsertCobranca(data.data);
     }
     
     return { error: 'Action not handled in POST' };
@@ -153,7 +161,7 @@ function getSheetData(sheetName) {
     ],
     'Cobrancas': [
       'id', 'cadastroId', 'contrato', 'competencia', 'vencimento', 'valor',
-      'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'envioOperationId',
+      'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'envioOperationId', 'pagamentoOperationId',
       'version', 'createdAt', 'updatedAt'
     ]
   };
@@ -397,6 +405,9 @@ function deleteTarefa(id) {
 }
 
 function upsertCondominio(condoData) {
+  if (condoData.nome && !condoData.nomeNormalizado) {
+    condoData.nomeNormalizado = condoData.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  }
   const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
   const sheet = ss.getSheetByName('Condominios');
   const data = sheet.getDataRange().getValues();
@@ -421,9 +432,6 @@ function upsertCondominio(condoData) {
   }
   
   // Create new
-  if (condoData.nome && !condoData.nomeNormalizado) {
-    condoData.nomeNormalizado = condoData.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
-  }
   const newRow = [];
   headers.forEach(header => {
     newRow.push(condoData[header] || "");
@@ -482,10 +490,15 @@ function upsertCobranca(cobrancaData) {
   return { success: true, created: true, data: cobrancaData };
 }
 
-function gerarCobrancasMensais(monthsBack = 0) {
-  const lock = LockService.getScriptLock();
+function gerarCobrancasMensais(monthsBack, useLock) {
+  if (typeof monthsBack === 'object' || monthsBack === undefined) {
+    monthsBack = 0;
+    useLock = true;
+  }
+  useLock = useLock !== false;
+  const lock = useLock ? LockService.getScriptLock() : null;
   try {
-    lock.waitLock(30000);
+    if (lock) lock.waitLock(30000);
     const ss = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
     const sheetCobrancas = ss.getSheetByName('Cobrancas');
     
@@ -563,13 +576,14 @@ function gerarCobrancasMensais(monthsBack = 0) {
     }
   } catch (e) {
     console.error(e);
+    throw e;
   } finally {
-    lock.releaseLock();
+    if (lock) lock.releaseLock();
   }
 }
 
 function gerarCobrancasHistoricas() {
-  gerarCobrancasMensais(2); // Generate for current and last 2 months
+  gerarCobrancasMensais(2, false); // Generate for current and last 2 months
   return { success: true };
 }
 
@@ -579,6 +593,6 @@ function jsonResponse(data) {
 }
 
 function syncCobrancas() {
-  gerarCobrancasMensais();
+  gerarCobrancasMensais(0, false);
   return { success: true };
 }

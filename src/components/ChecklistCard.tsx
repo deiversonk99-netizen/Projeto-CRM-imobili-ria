@@ -33,14 +33,12 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const pendingOpRef = React.useRef<{ id: string, checklist: ExtendedChecklist } | null>(null);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-    useEffect(() => {
+      useEffect(() => {
     const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
     if (!isDirty) return;
 
     setSaveStatus(prev => (prev !== 'saving' && prev !== 'error' ? 'unsaved' : prev));
 
-    // If we already have something in the queue that matches the new checklist, just keep the existing operationId.
-    // Actually, let's just queue the payload. We will assign an operationId when we actually start saving it if it doesn't have one in the ref.
     syncQueueRef.current = checklist;
 
     const performSave = async () => {
@@ -52,11 +50,13 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       isSavingRef.current = true;
       setSaveStatus('saving');
       
-      // Keep the same operationId for retries of the SAME target payload
+      // Vincula UUID ao par {snapshot, version}. Se mudar algo (mesmo que seja só o estado), gera novo UUID.
       if (!pendingOpRef.current || JSON.stringify(pendingOpRef.current.checklist) !== JSON.stringify(targetToSave)) {
           pendingOpRef.current = { id: uuidv4(), checklist: targetToSave };
       }
       const opId = pendingOpRef.current.id;
+      
+      let isSuccess = false;
 
       try {
         const { docsExtras, ...baseChecklist } = targetToSave;
@@ -68,21 +68,24 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
         };
         
         const res = await db.updateChecklist(dataToSave);
+        isSuccess = true;
         
         const newVersion = res?.version || dataToSave.version + 1;
         const savedState = { ...targetToSave, version: newVersion };
         lastSavedState.current = savedState;
         
+        // Aplica a nova versão devolvida pelo servidor antes de processar a próxima alteração
         setChecklist(prev => {
             if (JSON.stringify(prev) === JSON.stringify(targetToSave)) {
                 return savedState;
             }
+            // Se o usuário fez mudanças enquanto salvava, mesclamos a versão mais recente!
             return { ...prev, version: newVersion };
         });
         
         onUpdate(savedState);
         setSaveStatus('saved');
-        pendingOpRef.current = null; // Clear on success
+        pendingOpRef.current = null; // Limpa sucesso
         
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
@@ -97,7 +100,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
            addToast('Demora na rede ao salvar checklist. Retentando em breve.', 'info');
         } else if (isConflict) {
            addToast('Conflito: O checklist foi modificado por outra aba ou usuário. Recarregue a página para ver a versão mais recente.', 'error');
-           // DO NOT RETRY on conflict
+           // Interrompe retentativas automáticas no conflito
            syncQueueRef.current = null; 
         } else {
            addToast('Erro ao salvar automático: ' + err.message, 'error');
@@ -105,20 +108,21 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
         
         setSaveStatus('error');
         if (!isConflict && !syncQueueRef.current) {
-            syncQueueRef.current = targetToSave; // Put it back to retry if not conflict and no newer edits
+            syncQueueRef.current = targetToSave; // Re-enfileira para tentar novamente
         }
       } finally {
         isSavingRef.current = false;
-        // Access latest saveStatus from state via a check if needed, but it's safe to just check syncQueueRef
-        if (syncQueueRef.current) {
-            setTimeout(performSave, 5000); // Wait 5s before auto-retry
+        // Só agenda retentativa automática em caso de erro. Em sucesso, o useEffect já engatilha se houver fila.
+        if (!isSuccess && syncQueueRef.current) {
+            setTimeout(performSave, 5000);
         }
       }
     };
 
     const debounceTimer = setTimeout(performSave, 1500);
     return () => clearTimeout(debounceTimer);
-  }, [checklist, onUpdate, addToast]); // Removed saveStatus from dependencies
+  }, [checklist, onUpdate, addToast]); // Dependência saveStatus removida!
+
 
 
   const handleRetry = () => {

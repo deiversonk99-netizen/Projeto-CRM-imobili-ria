@@ -37,7 +37,10 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
 
     const data = await response.json();
     if (data.error) {
-      throw new Error(data.error);
+      const err: any = new Error(data.error);
+      if (data.code) err.code = data.code;
+      err.serverData = data;
+      throw err;
     }
     return data;
   } catch (error: any) {

@@ -30,47 +30,43 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const lastSavedState = React.useRef(initialChecklist);
   const isSavingRef = React.useRef(false);
   const syncQueueRef = React.useRef<ExtendedChecklist | null>(null);
+  const pendingOpRef = React.useRef<{ id: string, checklist: ExtendedChecklist } | null>(null);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  useEffect(() => {
-    const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
-    if (!isDirty) {
-      if (JSON.stringify(initialChecklist) !== JSON.stringify(lastSavedState.current)) {
-        // Apply external updates only if we don't have pending local changes
-        setChecklist(initialChecklist);
-        lastSavedState.current = initialChecklist;
-      }
-    }
-  }, [initialChecklist, checklist]);
-
-  useEffect(() => {
+    useEffect(() => {
     const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
     if (!isDirty) return;
 
-    if (saveStatus !== 'saving' && saveStatus !== 'error') {
-      setSaveStatus('unsaved');
-    }
+    setSaveStatus(prev => (prev !== 'saving' && prev !== 'error' ? 'unsaved' : prev));
 
+    // If we already have something in the queue that matches the new checklist, just keep the existing operationId.
+    // Actually, let's just queue the payload. We will assign an operationId when we actually start saving it if it doesn't have one in the ref.
     syncQueueRef.current = checklist;
-    
+
     const performSave = async () => {
       if (isSavingRef.current) return;
       if (!syncQueueRef.current) return;
-
+      
       const targetToSave = syncQueueRef.current;
       syncQueueRef.current = null;
       isSavingRef.current = true;
       setSaveStatus('saving');
+      
+      // Keep the same operationId for retries of the SAME target payload
+      if (!pendingOpRef.current || JSON.stringify(pendingOpRef.current.checklist) !== JSON.stringify(targetToSave)) {
+          pendingOpRef.current = { id: uuidv4(), checklist: targetToSave };
+      }
+      const opId = pendingOpRef.current.id;
 
-      const opId = uuidv4();
       try {
         const { docsExtras, ...baseChecklist } = targetToSave;
         const dataToSave = {
           ...baseChecklist,
           documentos_json: JSON.stringify(docsExtras),
           operationId: opId,
-          version: (targetToSave as any).version || 1
+          version: targetToSave.version || 1
         };
+        
         const res = await db.updateChecklist(dataToSave);
         
         const newVersion = res?.version || dataToSave.version + 1;
@@ -83,9 +79,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
             }
             return { ...prev, version: newVersion };
         });
-
+        
         onUpdate(savedState);
         setSaveStatus('saved');
+        pendingOpRef.current = null; // Clear on success
+        
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
             setSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
@@ -93,25 +91,35 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       } catch (err: any) {
         const isTimeout = err?.message?.includes('TIMEOUT') || err?.name === 'AbortError';
         const isRedirectFail = err?.message?.includes('REDIRECT_FAILED');
+        const isConflict = err?.code === 'CHECKLIST_CONFLICT';
         
         if (isTimeout || isRedirectFail) {
-           addToast('Demora na rede ao salvar checklist. Verifique os dados.', 'info');
+           addToast('Demora na rede ao salvar checklist. Retentando em breve.', 'info');
+        } else if (isConflict) {
+           addToast('Conflito: O checklist foi modificado por outra aba ou usuário. Recarregue a página para ver a versão mais recente.', 'error');
+           // DO NOT RETRY on conflict
+           syncQueueRef.current = null; 
         } else {
            addToast('Erro ao salvar automático: ' + err.message, 'error');
         }
+        
         setSaveStatus('error');
-        syncQueueRef.current = targetToSave; // Put it back to retry
+        if (!isConflict && !syncQueueRef.current) {
+            syncQueueRef.current = targetToSave; // Put it back to retry if not conflict and no newer edits
+        }
       } finally {
         isSavingRef.current = false;
-        if (syncQueueRef.current && saveStatus !== 'error') {
-            setTimeout(performSave, 1000);
+        // Access latest saveStatus from state via a check if needed, but it's safe to just check syncQueueRef
+        if (syncQueueRef.current) {
+            setTimeout(performSave, 5000); // Wait 5s before auto-retry
         }
       }
     };
 
     const debounceTimer = setTimeout(performSave, 1500);
     return () => clearTimeout(debounceTimer);
-  }, [checklist, onUpdate, addToast, saveStatus]);
+  }, [checklist, onUpdate, addToast]); // Removed saveStatus from dependencies
+
 
   const handleRetry = () => {
     setSaveStatus('unsaved');

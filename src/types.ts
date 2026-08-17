@@ -41,6 +41,8 @@ export interface ChecklistDocs {
   inq_vistoriaAssinada: boolean;
   inq_seguroIncendio: boolean;
   documentos_json?: string;
+  version?: number;
+  operationId?: string;
 }
 
 export type TipoTarefa = 'Aniversário' | 'Boleto 3 dias' | 'Boleto 2 dias' | 'Boleto 1 dia' | 'Boleto Hoje' | 'Boleto Atrasado' | 'Boleto Enviado';

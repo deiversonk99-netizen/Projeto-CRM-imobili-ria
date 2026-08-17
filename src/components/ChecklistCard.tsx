@@ -24,112 +24,126 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const [isExpanded, setIsExpanded] = useState(false)
   const [newDocForm, setNewDocForm] = useState({ nome: '', categoria: 'Locatário' })
   
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'idle' | 'unsaved'>('idle')
-  const { addToast } = useToast()
 
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error' | 'idle' | 'unsaved' | 'conflict'>('idle')
+  const saveStatusRef = React.useRef(saveStatus);
+  useEffect(() => { saveStatusRef.current = saveStatus; }, [saveStatus]);
+
+  const { addToast } = useToast()
+  
   const lastSavedState = React.useRef(initialChecklist);
   const isSavingRef = React.useRef(false);
-  const syncQueueRef = React.useRef<ExtendedChecklist | null>(null);
-  const pendingOpRef = React.useRef<{ id: string, checklist: ExtendedChecklist } | null>(null);
+  const inFlightRef = React.useRef<{ id: string, payload: ExtendedChecklist } | null>(null);
+  const queuedRef = React.useRef<ExtendedChecklist | null>(null);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-      useEffect(() => {
+  // Sincronização externa
+  useEffect(() => {
+    if (saveStatusRef.current === 'idle' || saveStatusRef.current === 'saved') {
+      if (JSON.stringify(initialChecklist) !== JSON.stringify(lastSavedState.current)) {
+        setChecklist(initialChecklist);
+        lastSavedState.current = initialChecklist;
+      }
+    }
+  }, [initialChecklist]);
+
+  const processQueue = useCallback(async () => {
+    if (isSavingRef.current) return;
+    if (!inFlightRef.current && !queuedRef.current) return;
+    
+    // Se não há nada em voo, promovemos a fila
+    if (!inFlightRef.current && queuedRef.current) {
+      inFlightRef.current = { id: uuidv4(), payload: queuedRef.current };
+      queuedRef.current = null;
+    }
+    
+    isSavingRef.current = true;
+    setSaveStatus('saving');
+    
+    try {
+      const job = inFlightRef.current!;
+      const { docsExtras, ...baseChecklist } = job.payload;
+      
+      // Sempre usamos a versão mais recente confirmada para submeter o job
+      const currentVersion = lastSavedState.current.version || 1;
+      
+      const dataToSave = {
+        ...baseChecklist,
+        documentos_json: JSON.stringify(docsExtras),
+        operationId: job.id,
+        version: currentVersion
+      };
+      
+      const res = await db.updateChecklist(dataToSave);
+      
+      const newVersion = res?.version || currentVersion + 1;
+      const savedState = { ...job.payload, version: newVersion };
+      lastSavedState.current = savedState;
+      
+      inFlightRef.current = null; // Sucesso! Limpa o job em voo.
+      
+      // Injeta a nova versão se o checklist não sofreu mutação
+      setChecklist(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(job.payload)) {
+              return savedState;
+          }
+          return { ...prev, version: newVersion };
+      });
+      
+      onUpdate(savedState);
+      setSaveStatus('saved');
+      
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+          setSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
+      }, 3000);
+      
+    } catch (err: any) {
+      const isTimeout = err?.message?.includes('TIMEOUT') || err?.name === 'AbortError';
+      const isRedirectFail = err?.message?.includes('REDIRECT_FAILED');
+      const isConflict = err?.code === 'CHECKLIST_CONFLICT';
+      
+      if (isTimeout || isRedirectFail) {
+         addToast('Demora na rede. Retentando...', 'info');
+         setSaveStatus('error');
+      } else if (isConflict) {
+         addToast('Conflito: O checklist foi modificado por outra pessoa. Recarregue a página.', 'error');
+         setSaveStatus('conflict');
+         inFlightRef.current = null;
+         queuedRef.current = null;
+      } else {
+         addToast('Erro ao salvar automático: ' + err.message, 'error');
+         setSaveStatus('error');
+      }
+    } finally {
+      isSavingRef.current = false;
+      // Reagenda recursivamente se houver trabalho restante e sem conflito
+      if (saveStatusRef.current !== 'conflict' && (inFlightRef.current || queuedRef.current)) {
+          setTimeout(processQueue, inFlightRef.current ? 5000 : 1000);
+      }
+    }
+  }, [addToast, onUpdate]);
+
+  // Enfileiramento de mudanças locais
+  useEffect(() => {
     const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
     if (!isDirty) return;
 
+    if (saveStatusRef.current === 'conflict') return;
+
     setSaveStatus(prev => (prev !== 'saving' && prev !== 'error' ? 'unsaved' : prev));
+    queuedRef.current = checklist;
 
-    syncQueueRef.current = checklist;
-
-    const performSave = async () => {
-      if (isSavingRef.current) return;
-      if (!syncQueueRef.current) return;
-      
-      const targetToSave = syncQueueRef.current;
-      syncQueueRef.current = null;
-      isSavingRef.current = true;
-      setSaveStatus('saving');
-      
-      // Vincula UUID ao par {snapshot, version}. Se mudar algo (mesmo que seja só o estado), gera novo UUID.
-      if (!pendingOpRef.current || JSON.stringify(pendingOpRef.current.checklist) !== JSON.stringify(targetToSave)) {
-          pendingOpRef.current = { id: uuidv4(), checklist: targetToSave };
-      }
-      const opId = pendingOpRef.current.id;
-      
-      let isSuccess = false;
-
-      try {
-        const { docsExtras, ...baseChecklist } = targetToSave;
-        const dataToSave = {
-          ...baseChecklist,
-          documentos_json: JSON.stringify(docsExtras),
-          operationId: opId,
-          version: targetToSave.version || 1
-        };
-        
-        const res = await db.updateChecklist(dataToSave);
-        isSuccess = true;
-        
-        const newVersion = res?.version || dataToSave.version + 1;
-        const savedState = { ...targetToSave, version: newVersion };
-        lastSavedState.current = savedState;
-        
-        // Aplica a nova versão devolvida pelo servidor antes de processar a próxima alteração
-        setChecklist(prev => {
-            if (JSON.stringify(prev) === JSON.stringify(targetToSave)) {
-                return savedState;
-            }
-            // Se o usuário fez mudanças enquanto salvava, mesclamos a versão mais recente!
-            return { ...prev, version: newVersion };
-        });
-        
-        onUpdate(savedState);
-        setSaveStatus('saved');
-        pendingOpRef.current = null; // Limpa sucesso
-        
-        if (timerRef.current) clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => {
-            setSaveStatus(prev => prev === 'saved' ? 'idle' : prev);
-        }, 3000);
-      } catch (err: any) {
-        const isTimeout = err?.message?.includes('TIMEOUT') || err?.name === 'AbortError';
-        const isRedirectFail = err?.message?.includes('REDIRECT_FAILED');
-        const isConflict = err?.code === 'CHECKLIST_CONFLICT';
-        
-        if (isTimeout || isRedirectFail) {
-           addToast('Demora na rede ao salvar checklist. Retentando em breve.', 'info');
-        } else if (isConflict) {
-           addToast('Conflito: O checklist foi modificado por outra aba ou usuário. Recarregue a página para ver a versão mais recente.', 'error');
-           // Interrompe retentativas automáticas no conflito
-           syncQueueRef.current = null; 
-        } else {
-           addToast('Erro ao salvar automático: ' + err.message, 'error');
-        }
-        
-        setSaveStatus('error');
-        if (!isConflict && !syncQueueRef.current) {
-            syncQueueRef.current = targetToSave; // Re-enfileira para tentar novamente
-        }
-      } finally {
-        isSavingRef.current = false;
-        // Só agenda retentativa automática em caso de erro. Em sucesso, o useEffect já engatilha se houver fila.
-        if (!isSuccess && syncQueueRef.current) {
-            setTimeout(performSave, 5000);
-        }
-      }
-    };
-
-    const debounceTimer = setTimeout(performSave, 1500);
+    const debounceTimer = setTimeout(() => {
+        if (saveStatusRef.current !== 'conflict') processQueue();
+    }, 1500);
     return () => clearTimeout(debounceTimer);
-  }, [checklist, onUpdate, addToast]); // Dependência saveStatus removida!
-
-
+  }, [checklist, processQueue]);
 
   const handleRetry = () => {
     setSaveStatus('unsaved');
-    setChecklist({ ...checklist }); // Trigger effect
+    processQueue();
   }
-
   const total = checklist.docsExtras.length
   const done = checklist.docsExtras.filter(d => d.isFeito).length
   const progressPercent = total === 0 ? 0 : Math.round((done / total) * 100)
@@ -424,6 +438,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
                 {saveStatus === 'error' && (
                   <button onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="flex items-center text-red-500 hover:text-red-700 transition-colors">
                     <AlertCircle className="h-3 w-3 mr-1.5" /> Erro (Tentar Novamente)
+                  </button>
+                )}
+                {saveStatus === 'conflict' && (
+                  <button onClick={(e) => { e.stopPropagation(); window.location.reload(); }} className="flex items-center text-red-500 hover:text-red-700 transition-colors font-bold">
+                    <AlertCircle className="h-3 w-3 mr-1.5" /> Conflito (Recarregar)
                   </button>
                 )}
               </div>

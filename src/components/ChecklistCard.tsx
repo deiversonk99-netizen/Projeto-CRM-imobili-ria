@@ -37,15 +37,32 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const queuedRef = React.useRef<ExtendedChecklist | null>(null);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // Sincronização externa
+  const pendingExternalRef = React.useRef<ExtendedChecklist | null>(null);
+
+  // Sincronização externa - Guarda a atualização se a interface estiver ocupada
   useEffect(() => {
-    if (saveStatusRef.current === 'idle' || saveStatusRef.current === 'saved') {
-      if (JSON.stringify(initialChecklist) !== JSON.stringify(lastSavedState.current)) {
-        setChecklist(initialChecklist);
-        lastSavedState.current = initialChecklist;
-      }
+    if (JSON.stringify(initialChecklist) !== JSON.stringify(lastSavedState.current)) {
+      pendingExternalRef.current = initialChecklist;
     }
   }, [initialChecklist]);
+
+  // Aplica a sincronização apenas quando a máquina de estados estiver 100% livre
+  useEffect(() => {
+    const podeSincronizar = 
+      !isSavingRef.current && 
+      !inFlightRef.current && 
+      !queuedRef.current && 
+      JSON.stringify(checklist) === JSON.stringify(lastSavedState.current);
+
+    if (podeSincronizar && pendingExternalRef.current) {
+      const external = pendingExternalRef.current;
+      if (JSON.stringify(external) !== JSON.stringify(lastSavedState.current)) {
+        setChecklist(external);
+        lastSavedState.current = external;
+      }
+      pendingExternalRef.current = null;
+    }
+  }, [checklist, saveStatus, initialChecklist]);
 
   const processQueue = useCallback(async () => {
     if (isSavingRef.current) return;

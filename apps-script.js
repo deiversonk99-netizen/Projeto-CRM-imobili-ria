@@ -336,7 +336,28 @@ function deleteCadastro(id) {
 }
 
 function updateChecklist(checklistData) {
-  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Checklists');
+  const spreadsheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
+  
+  // 1. Verificar histórico de operações para garantir idempotência contra timeouts
+  let opsSheet = spreadsheet.getSheetByName('Operacoes');
+  if (!opsSheet) opsSheet = spreadsheet.insertSheet('Operacoes');
+  
+  if (checklistData.operationId) {
+    const opsLastRow = opsSheet.getLastRow();
+    if (opsLastRow > 1) {
+      const opIds = opsSheet.getRange(2, 1, opsLastRow - 1, 1).getValues();
+      for (let j = 0; j < opIds.length; j++) {
+        if (String(opIds[j][0]) === String(checklistData.operationId)) {
+          // Operação já foi processada! Recupera a versão resultante para devolver corretamente
+          const resultedVersion = opsSheet.getRange(j + 2, 4).getValue(); // Col 4 = result_version
+          return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: Number(resultedVersion) };
+        }
+      }
+    }
+  }
+
+  // 2. Processar a alteração no Checklist
+  const sheet = spreadsheet.getSheetByName('Checklists');
   const lastRow = sheet.getLastRow();
   
   if (lastRow <= 1) return { error: 'Checklist not found' };
@@ -347,16 +368,12 @@ function updateChecklist(checklistData) {
     if (String(ids[i][0]) === String(checklistData.id)) {
       const rowIndex = i + 2;
       
-      // Check version and operationId to prevent conflicts and ensure idempotency
       const metaValues = sheet.getRange(rowIndex, 9, 1, 2).getValues()[0];
       const currentVersion = Number(metaValues[0]) || 1;
-      const lastOperationId = metaValues[1];
-      
-      if (checklistData.operationId && String(lastOperationId) === String(checklistData.operationId)) {
-        return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: currentVersion };
-      }
       
       if (checklistData.version && currentVersion !== Number(checklistData.version)) {
+        // Registrar conflito na auditoria também (opcional, mas bom pra rastreio)
+        opsSheet.appendRow([checklistData.operationId || 'N/A', new Date().toISOString(), 'CONFLICT', currentVersion, checklistData.id, checklistData.version]);
         return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT' };
       }
       
@@ -372,6 +389,22 @@ function updateChecklist(checklistData) {
         nextVersion,
         checklistData.operationId || ''
       ]]);
+      
+      // 3. Registrar sucesso no log de Operações
+      if (checklistData.operationId) {
+        if (opsSheet.getLastRow() === 0) {
+           opsSheet.appendRow(['operationId', 'timestamp', 'status', 'result_version', 'target_id', 'requested_version']); // Headers if empty
+        }
+        opsSheet.appendRow([
+          checklistData.operationId, 
+          new Date().toISOString(), 
+          'SUCCESS', 
+          nextVersion, 
+          checklistData.id, 
+          checklistData.version
+        ]);
+      }
+      
       return { success: true, version: nextVersion, operationId: checklistData.operationId };
     }
   }

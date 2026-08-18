@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, AlertCircle, Trash2, Plus, ChevronDown, ChevronU
 import { v4 as uuidv4 } from 'uuid'
 import { useToast } from './ui/Toast'
 import { useDebounce } from '../hooks/useDebounce'
+import localforage from 'localforage'
 
 const checkboxClass =
   'mt-0.5 h-4.5 w-4.5 shrink-0 rounded border-input text-primary accent-[#76b82a] focus:ring-2 focus:ring-ring/40'
@@ -38,6 +39,23 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const pendingExternalRef = React.useRef<ExtendedChecklist | null>(null);
+
+  const persistQueueState = useCallback(() => {
+    localforage.setItem(`checklist-queue-${initialChecklist.id}`, {
+        inFlight: inFlightRef.current,
+        queued: queuedRef.current
+    });
+  }, [initialChecklist.id]);
+
+  useEffect(() => {
+    localforage.getItem(`checklist-queue-${initialChecklist.id}`).then((savedQueue: any) => {
+      if (savedQueue?.inFlight) inFlightRef.current = savedQueue.inFlight;
+      if (savedQueue?.queued) queuedRef.current = savedQueue.queued;
+      if (savedQueue?.inFlight || savedQueue?.queued) {
+         processQueue();
+      }
+    }).catch(console.error);
+  }, []); // Run once on mount
 
   // Sincronização externa - Guarda a atualização se a interface estiver ocupada
   useEffect(() => {
@@ -72,6 +90,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     if (!inFlightRef.current && queuedRef.current) {
       inFlightRef.current = { id: uuidv4(), payload: queuedRef.current };
       queuedRef.current = null;
+      persistQueueState();
     }
     
     isSavingRef.current = true;
@@ -98,6 +117,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       lastSavedState.current = savedState;
       
       inFlightRef.current = null; // Sucesso! Limpa o job em voo.
+      persistQueueState();
       
       // Injeta a nova versão se o checklist não sofreu mutação
       setChecklist(prev => {
@@ -128,6 +148,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
          setSaveStatus('conflict');
          inFlightRef.current = null;
          queuedRef.current = null;
+         persistQueueState();
       } else {
          addToast('Erro ao salvar automático: ' + err.message, 'error');
          setSaveStatus('error');
@@ -150,6 +171,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
 
     setSaveStatus(prev => (prev !== 'saving' && prev !== 'error' ? 'unsaved' : prev));
     queuedRef.current = checklist;
+    persistQueueState();
 
     const debounceTimer = setTimeout(() => {
         if (saveStatusRef.current !== 'conflict') processQueue();

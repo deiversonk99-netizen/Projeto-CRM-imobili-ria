@@ -40,10 +40,20 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
 
   const pendingExternalRef = React.useRef<ExtendedChecklist | null>(null);
 
-  const persistQueueState = useCallback(() => {
-    localforage.setItem(`checklist-queue-${initialChecklist.id}`, {
-        inFlight: inFlightRef.current,
-        queued: queuedRef.current
+  const persistPromiseRef = React.useRef<Promise<void>>(Promise.resolve());
+  const persistQueueState = useCallback(async () => {
+    return new Promise<void>((resolve) => {
+      persistPromiseRef.current = persistPromiseRef.current.then(async () => {
+        try {
+          await localforage.setItem(`checklist-queue-${initialChecklist.id}`, {
+              inFlight: inFlightRef.current,
+              queued: queuedRef.current
+          });
+        } catch (err) {
+          console.error('IndexedDB Persist Error:', err);
+        }
+        resolve();
+      });
     });
   }, [initialChecklist.id]);
 
@@ -90,7 +100,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     if (!inFlightRef.current && queuedRef.current) {
       inFlightRef.current = { id: uuidv4(), payload: queuedRef.current };
       queuedRef.current = null;
-      persistQueueState();
+      await await await await await persistQueueState();
     }
     
     isSavingRef.current = true;
@@ -117,7 +127,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       lastSavedState.current = savedState;
       
       inFlightRef.current = null; // Sucesso! Limpa o job em voo.
-      persistQueueState();
+      await persistQueueState();
       
       // Injeta a nova versão se o checklist não sofreu mutação
       setChecklist(prev => {
@@ -144,11 +154,13 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
          addToast('Demora na rede. Retentando...', 'info');
          setSaveStatus('error');
       } else if (isConflict) {
-         addToast('Conflito: O checklist foi modificado por outra pessoa. Recarregue a página.', 'error');
+         const serverVersion = err?.currentVersion;
+         if (serverVersion && inFlightRef.current) {
+            inFlightRef.current.payload.version = serverVersion;
+         }
+         addToast('Conflito: O checklist foi modificado por outra pessoa. Suas alterações locais estão pausadas.', 'error');
          setSaveStatus('conflict');
-         inFlightRef.current = null;
-         queuedRef.current = null;
-         persistQueueState();
+         await persistQueueState();
       } else {
          addToast('Erro ao salvar automático: ' + err.message, 'error');
          setSaveStatus('error');
@@ -171,7 +183,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
 
     setSaveStatus(prev => (prev !== 'saving' && prev !== 'error' ? 'unsaved' : prev));
     queuedRef.current = checklist;
-    persistQueueState();
+    
+    // Self-invoking async to await persistence
+    (async () => {
+      await persistQueueState();
+    })();
 
     const debounceTimer = setTimeout(() => {
         if (saveStatusRef.current !== 'conflict') processQueue();
@@ -480,9 +496,25 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
                   </button>
                 )}
                 {saveStatus === 'conflict' && (
-                  <button onClick={(e) => { e.stopPropagation(); window.location.reload(); }} className="flex items-center text-red-500 hover:text-red-700 transition-colors font-bold">
-                    <AlertCircle className="h-3 w-3 mr-1.5" /> Conflito (Recarregar)
-                  </button>
+                  <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                    <span className="text-red-500 flex items-center font-bold mr-1"><AlertCircle className="h-3 w-3 mr-1.5" /> Conflito!</span>
+                    <button onClick={async (e) => { 
+                      e.stopPropagation(); 
+                      setSaveStatus('unsaved'); 
+                      processQueue(); 
+                    }} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-[10px] font-bold transition-colors">
+                      Forçar Sobrescrita
+                    </button>
+                    <button onClick={async (e) => { 
+                      e.stopPropagation(); 
+                      inFlightRef.current = null;
+                      queuedRef.current = null;
+                      await persistQueueState();
+                      window.location.reload(); 
+                    }} className="bg-muted text-muted-foreground hover:bg-muted-foreground/20 px-2 py-1 rounded text-[10px] font-medium transition-colors">
+                      Descartar e Recarregar
+                    </button>
+                  </div>
                 )}
               </div>
               <button 

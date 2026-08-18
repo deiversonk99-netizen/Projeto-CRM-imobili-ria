@@ -338,77 +338,93 @@ function deleteCadastro(id) {
 function updateChecklist(checklistData) {
   const spreadsheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU');
   
-  // 1. Verificar histórico de operações para garantir idempotência contra timeouts
   let opsSheet = spreadsheet.getSheetByName('Operacoes');
   if (!opsSheet) opsSheet = spreadsheet.insertSheet('Operacoes');
   
+  if (opsSheet.getLastRow() === 0) {
+    opsSheet.appendRow(['operationId', 'timestamp', 'status', 'result_version', 'target_id', 'requested_version']);
+  }
+  
+  const sheet = spreadsheet.getSheetByName('Checklists');
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { error: 'Checklist not found' };
+  
+  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  let targetRowIndex = -1;
+  let currentVersion = 1;
+  let lastRowOperationId = '';
+  
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(checklistData.id)) {
+      targetRowIndex = i + 2;
+      const metaValues = sheet.getRange(targetRowIndex, 9, 1, 2).getValues()[0];
+      currentVersion = Number(metaValues[0]) || 1;
+      lastRowOperationId = metaValues[1];
+      break;
+    }
+  }
+
+  if (targetRowIndex === -1) return { error: 'Checklist not found' };
+
+  let pendingRowIndex = -1;
   if (checklistData.operationId) {
     const opsLastRow = opsSheet.getLastRow();
     if (opsLastRow > 1) {
-      const opIds = opsSheet.getRange(2, 1, opsLastRow - 1, 1).getValues();
-      for (let j = 0; j < opIds.length; j++) {
-        if (String(opIds[j][0]) === String(checklistData.operationId)) {
-          // Operação já foi processada! Recupera a versão resultante para devolver corretamente
-          const resultedVersion = opsSheet.getRange(j + 2, 4).getValue(); // Col 4 = result_version
-          return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: Number(resultedVersion) };
+      const opsData = opsSheet.getRange(2, 1, opsLastRow - 1, 4).getValues();
+      for (let j = opsData.length - 1; j >= 0; j--) {
+        if (String(opsData[j][0]) === String(checklistData.operationId)) {
+          const opStatus = opsData[j][2];
+          const opVersion = Number(opsData[j][3]);
+          
+          if (opStatus === 'SUCCESS') {
+            return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: opVersion };
+          } else if (opStatus === 'CONFLICT') {
+            return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT', currentVersion };
+          } else if (opStatus === 'PENDING') {
+            if (String(lastRowOperationId) === String(checklistData.operationId)) {
+              opsSheet.getRange(j + 2, 3).setValue('SUCCESS');
+              return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: currentVersion };
+            }
+            pendingRowIndex = j + 2;
+          }
+          break;
         }
       }
     }
   }
 
-  // 2. Processar a alteração no Checklist
-  const sheet = spreadsheet.getSheetByName('Checklists');
-  const lastRow = sheet.getLastRow();
-  
-  if (lastRow <= 1) return { error: 'Checklist not found' };
-  
-  const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-  
-  for (let i = 0; i < ids.length; i++) {
-    if (String(ids[i][0]) === String(checklistData.id)) {
-      const rowIndex = i + 2;
-      
-      const metaValues = sheet.getRange(rowIndex, 9, 1, 2).getValues()[0];
-      const currentVersion = Number(metaValues[0]) || 1;
-      
-      if (checklistData.version && currentVersion !== Number(checklistData.version)) {
-        // Registrar conflito na auditoria também (opcional, mas bom pra rastreio)
-        opsSheet.appendRow([checklistData.operationId || 'N/A', new Date().toISOString(), 'CONFLICT', currentVersion, checklistData.id, checklistData.version]);
-        return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT' };
-      }
-      
-      const nextVersion = currentVersion + 1;
-      
-      sheet.getRange(rowIndex, 3, 1, 8).setValues([[
-        checklistData.prop_contratoEnviado,
-        checklistData.prop_vistoriaEnviada,
-        checklistData.inq_manualEntregue,
-        checklistData.inq_vistoriaAssinada,
-        checklistData.inq_seguroIncendio,
-        checklistData.documentos_json || '[]',
-        nextVersion,
-        checklistData.operationId || ''
-      ]]);
-      
-      // 3. Registrar sucesso no log de Operações
-      if (checklistData.operationId) {
-        if (opsSheet.getLastRow() === 0) {
-           opsSheet.appendRow(['operationId', 'timestamp', 'status', 'result_version', 'target_id', 'requested_version']); // Headers if empty
-        }
-        opsSheet.appendRow([
-          checklistData.operationId, 
-          new Date().toISOString(), 
-          'SUCCESS', 
-          nextVersion, 
-          checklistData.id, 
-          checklistData.version
-        ]);
-      }
-      
-      return { success: true, version: nextVersion, operationId: checklistData.operationId };
+  if (checklistData.version && currentVersion !== Number(checklistData.version)) {
+    opsSheet.appendRow([checklistData.operationId || 'N/A', new Date().toISOString(), 'CONFLICT', currentVersion, checklistData.id, checklistData.version]);
+    return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT', currentVersion };
+  }
+
+  const nextVersion = currentVersion + 1;
+
+  if (checklistData.operationId) {
+    if (pendingRowIndex !== -1) {
+      opsSheet.getRange(pendingRowIndex, 2, 1, 5).setValues([[new Date().toISOString(), 'PENDING', nextVersion, checklistData.id, checklistData.version]]);
+    } else {
+      opsSheet.appendRow([checklistData.operationId, new Date().toISOString(), 'PENDING', nextVersion, checklistData.id, checklistData.version]);
+      pendingRowIndex = opsSheet.getLastRow();
     }
   }
-  return { error: 'Checklist not found' };
+
+  sheet.getRange(targetRowIndex, 3, 1, 8).setValues([[
+    checklistData.prop_contratoEnviado,
+    checklistData.prop_vistoriaEnviada,
+    checklistData.inq_manualEntregue,
+    checklistData.inq_vistoriaAssinada,
+    checklistData.inq_seguroIncendio,
+    checklistData.documentos_json || '[]',
+    nextVersion,
+    checklistData.operationId || ''
+  ]]);
+
+  if (pendingRowIndex !== -1) {
+    opsSheet.getRange(pendingRowIndex, 3).setValue('SUCCESS');
+  }
+
+  return { success: true, version: nextVersion, operationId: checklistData.operationId };
 }
 
 function saveTarefa(tarefaData) {

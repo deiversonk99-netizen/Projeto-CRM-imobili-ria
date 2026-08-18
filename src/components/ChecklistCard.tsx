@@ -34,7 +34,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   
   const lastSavedState = React.useRef(initialChecklist);
   const isSavingRef = React.useRef(false);
-  const inFlightRef = React.useRef<{ id: string, payload: ExtendedChecklist } | null>(null);
+  const inFlightRef = React.useRef<{ id: string, payload: ExtendedChecklist, baseVersion?: number } | null>(null);
   const queuedRef = React.useRef<ExtendedChecklist | null>(null);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
@@ -58,6 +58,16 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       });
     });
   }, [initialChecklist.id, addToast]);
+
+  const persistSafely = async (): Promise<boolean> => {
+    try {
+      await persistQueueState();
+      return true;
+    } catch {
+      setSaveStatus('error');
+      return false;
+    }
+  };
 
   useEffect(() => {
     localforage.getItem(`checklist-queue-${initialChecklist.id}`).then((savedQueue: any) => {
@@ -100,9 +110,14 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     
     // Se não há nada em voo, promovemos a fila
     if (!inFlightRef.current && queuedRef.current) {
-      inFlightRef.current = { id: uuidv4(), payload: queuedRef.current };
+      inFlightRef.current = { 
+        id: uuidv4(), 
+        payload: queuedRef.current,
+        baseVersion: lastSavedState.current.version || 1
+      };
       queuedRef.current = null;
-      await persistQueueState();
+      const ok = await persistSafely();
+      if (!ok) return;
     }
     
     isSavingRef.current = true;
@@ -113,7 +128,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       const { docsExtras, ...baseChecklist } = job.payload;
       
       // Sempre usamos a versão mais recente confirmada para submeter o job
-      const currentVersion = job.payload.version ?? lastSavedState.current.version ?? 1;
+      const currentVersion = job.baseVersion ?? job.payload.version ?? lastSavedState.current.version ?? 1;
       
       const dataToSave = {
         ...baseChecklist,
@@ -129,7 +144,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       lastSavedState.current = savedState;
       
       inFlightRef.current = null; // Sucesso! Limpa o job em voo.
-      await persistQueueState();
+      await persistSafely();
       
       // Injeta a nova versão se o checklist não sofreu mutação
       setChecklist(prev => {
@@ -158,11 +173,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       } else if (isConflict) {
          const serverVersion = err?.serverData?.currentVersion ?? err?.currentVersion;
          if (serverVersion && inFlightRef.current) {
-            inFlightRef.current.payload.version = serverVersion;
+            inFlightRef.current.baseVersion = serverVersion;
          }
          addToast('Conflito: O checklist foi modificado por outra pessoa. Suas alterações locais estão pausadas.', 'error');
          setSaveStatus('conflict');
-         await persistQueueState();
+         await persistSafely();
       } else {
          addToast('Erro ao salvar automático: ' + err.message, 'error');
          setSaveStatus('error');
@@ -186,9 +201,8 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     setSaveStatus(prev => (prev !== 'saving' && prev !== 'error' ? 'unsaved' : prev));
     queuedRef.current = checklist;
     
-    // Self-invoking async to await persistence
     (async () => {
-      await persistQueueState();
+      await persistSafely();
     })();
 
     const debounceTimer = setTimeout(() => {
@@ -506,8 +520,8 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
                         inFlightRef.current.id = uuidv4();
                       }
                       setSaveStatus('unsaved'); 
-                      await persistQueueState();
-                      processQueue(); 
+                      const ok = await persistSafely();
+                      if (ok) processQueue(); 
                     }} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-[10px] font-bold transition-colors">
                       Forçar Sobrescrita
                     </button>
@@ -515,7 +529,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
                       e.stopPropagation(); 
                       inFlightRef.current = null;
                       queuedRef.current = null;
-                      await persistQueueState();
+                      await persistSafely();
                       window.location.reload(); 
                     }} className="bg-muted text-muted-foreground hover:bg-muted-foreground/20 px-2 py-1 rounded text-[10px] font-medium transition-colors">
                       Descartar e Recarregar

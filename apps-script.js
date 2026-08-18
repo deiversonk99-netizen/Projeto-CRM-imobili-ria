@@ -371,12 +371,22 @@ function updateChecklist(checklistData) {
     const opsLastRow = opsSheet.getLastRow();
     if (opsLastRow > 1) {
       const textFinder = opsSheet.getRange(2, 1, opsLastRow - 1, 1).createTextFinder(checklistData.operationId).matchEntireCell(true);
-      const match = textFinder.findNext();
-      if (match) {
+      const matches = textFinder.findAll();
+      
+      if (matches.length > 0) {
+        // Obter a última ocorrência (maior número de linha)
+        const match = matches[matches.length - 1];
         const j = match.getRow();
-        const meta = opsSheet.getRange(j, 3, 1, 2).getValues()[0];
+        
+        // Colunas: 1:id, 2:timestamp, 3:status, 4:result_version, 5:target_id
+        const meta = opsSheet.getRange(j, 3, 1, 3).getValues()[0];
         const opStatus = meta[0];
         const opVersion = Number(meta[1]);
+        const opTargetId = String(meta[2]);
+        
+        if (opTargetId !== String(checklistData.id)) {
+           return { error: 'INVALID_TARGET: O operationId fornecido pertence a outro checklist.' };
+        }
         
         if (opStatus === 'SUCCESS') {
           return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: opVersion };
@@ -394,7 +404,11 @@ function updateChecklist(checklistData) {
   }
 
   if (checklistData.version && currentVersion !== Number(checklistData.version)) {
-    opsSheet.appendRow([checklistData.operationId || 'N/A', new Date().toISOString(), 'CONFLICT', currentVersion, checklistData.id, checklistData.version]);
+    if (checklistData.operationId && pendingRowIndex !== -1) {
+      opsSheet.getRange(pendingRowIndex, 2, 1, 5).setValues([[new Date().toISOString(), 'CONFLICT', currentVersion, checklistData.id, checklistData.version]]);
+    } else {
+      opsSheet.appendRow([checklistData.operationId || 'N/A', new Date().toISOString(), 'CONFLICT', currentVersion, checklistData.id, checklistData.version]);
+    }
     return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT', currentVersion };
   }
 

@@ -40,6 +40,7 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
       const err: any = new Error(data.error);
       if (data.code) err.code = data.code;
       err.serverData = data;
+      err.currentVersion = data.currentVersion || data.version;
       throw err;
     }
     return data;

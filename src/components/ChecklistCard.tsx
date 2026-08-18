@@ -42,20 +42,22 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
 
   const persistPromiseRef = React.useRef<Promise<void>>(Promise.resolve());
   const persistQueueState = useCallback(async () => {
-    return new Promise<void>((resolve) => {
+    return new Promise<void>((resolve, reject) => {
       persistPromiseRef.current = persistPromiseRef.current.then(async () => {
         try {
           await localforage.setItem(`checklist-queue-${initialChecklist.id}`, {
               inFlight: inFlightRef.current,
               queued: queuedRef.current
           });
+          resolve();
         } catch (err) {
           console.error('IndexedDB Persist Error:', err);
+          addToast('Não foi possível proteger esta alteração no armazenamento local. Não feche a página.', 'error');
+          reject(err);
         }
-        resolve();
       });
     });
-  }, [initialChecklist.id]);
+  }, [initialChecklist.id, addToast]);
 
   useEffect(() => {
     localforage.getItem(`checklist-queue-${initialChecklist.id}`).then((savedQueue: any) => {
@@ -100,7 +102,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
     if (!inFlightRef.current && queuedRef.current) {
       inFlightRef.current = { id: uuidv4(), payload: queuedRef.current };
       queuedRef.current = null;
-      await await await await await persistQueueState();
+      await persistQueueState();
     }
     
     isSavingRef.current = true;
@@ -111,7 +113,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
       const { docsExtras, ...baseChecklist } = job.payload;
       
       // Sempre usamos a versão mais recente confirmada para submeter o job
-      const currentVersion = lastSavedState.current.version || 1;
+      const currentVersion = job.payload.version ?? lastSavedState.current.version ?? 1;
       
       const dataToSave = {
         ...baseChecklist,
@@ -154,7 +156,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
          addToast('Demora na rede. Retentando...', 'info');
          setSaveStatus('error');
       } else if (isConflict) {
-         const serverVersion = err?.currentVersion;
+         const serverVersion = err?.serverData?.currentVersion ?? err?.currentVersion;
          if (serverVersion && inFlightRef.current) {
             inFlightRef.current.payload.version = serverVersion;
          }
@@ -500,7 +502,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
                     <span className="text-red-500 flex items-center font-bold mr-1"><AlertCircle className="h-3 w-3 mr-1.5" /> Conflito!</span>
                     <button onClick={async (e) => { 
                       e.stopPropagation(); 
+                      if (inFlightRef.current) {
+                        inFlightRef.current.id = uuidv4();
+                      }
                       setSaveStatus('unsaved'); 
+                      await persistQueueState();
                       processQueue(); 
                     }} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-1 rounded text-[10px] font-bold transition-colors">
                       Forçar Sobrescrita

@@ -370,24 +370,24 @@ function updateChecklist(checklistData) {
   if (checklistData.operationId) {
     const opsLastRow = opsSheet.getLastRow();
     if (opsLastRow > 1) {
-      const opsData = opsSheet.getRange(2, 1, opsLastRow - 1, 4).getValues();
-      for (let j = opsData.length - 1; j >= 0; j--) {
-        if (String(opsData[j][0]) === String(checklistData.operationId)) {
-          const opStatus = opsData[j][2];
-          const opVersion = Number(opsData[j][3]);
-          
-          if (opStatus === 'SUCCESS') {
-            return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: opVersion };
-          } else if (opStatus === 'CONFLICT') {
-            return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT', currentVersion };
-          } else if (opStatus === 'PENDING') {
-            if (String(lastRowOperationId) === String(checklistData.operationId)) {
-              opsSheet.getRange(j + 2, 3).setValue('SUCCESS');
-              return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: currentVersion };
-            }
-            pendingRowIndex = j + 2;
+      const textFinder = opsSheet.getRange(2, 1, opsLastRow - 1, 1).createTextFinder(checklistData.operationId).matchEntireCell(true);
+      const match = textFinder.findNext();
+      if (match) {
+        const j = match.getRow();
+        const meta = opsSheet.getRange(j, 3, 1, 2).getValues()[0];
+        const opStatus = meta[0];
+        const opVersion = Number(meta[1]);
+        
+        if (opStatus === 'SUCCESS') {
+          return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: opVersion };
+        } else if (opStatus === 'CONFLICT') {
+          return { error: 'CHECKLIST_CONFLICT: O checklist foi modificado por outra pessoa.', code: 'CHECKLIST_CONFLICT', currentVersion };
+        } else if (opStatus === 'PENDING') {
+          if (String(lastRowOperationId) === String(checklistData.operationId)) {
+            opsSheet.getRange(j, 3).setValue('SUCCESS');
+            return { success: true, status: 'already_updated', operationId: checklistData.operationId, version: currentVersion };
           }
-          break;
+          pendingRowIndex = j;
         }
       }
     }

@@ -26,6 +26,7 @@ const pageTitles: Record<string, string> = {
   renovacoes: 'Renovações de Contrato',
   documentos: 'Checklist de Documentos',
   boletos: 'Financeiro e Boletos',
+  promocoes: 'Promoções e WhatsApp',
 };
 
 function Brand() {

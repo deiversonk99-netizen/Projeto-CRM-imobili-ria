@@ -1,136 +1,252 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Cadastro } from '../types';
-import { Search, MessageSquare } from 'lucide-react';
+import { useCampanhas, useCampanhaDestinatarios } from '../features/promocoes/hooks/useCampanhas';
+import { extrairVinculos, aplicarFiltrosVinculos, agruparContatos } from '../features/promocoes/domain';
+import { FiltrosPromocao, Campanha, CampanhaDestinatario } from '../features/promocoes/types';
+import { PromotionFilters } from '../features/promocoes/components/PromotionFilters';
+import { AudienceResults } from '../features/promocoes/components/AudienceResults';
+import { CampaignForm } from '../features/promocoes/components/CampaignForm';
+import { CampaignQueue } from '../features/promocoes/components/CampaignQueue';
+import { LayoutList, Megaphone, Loader2 } from 'lucide-react';
+import { gerarTextoMensagem } from '../features/promocoes/domain';
 
-interface PromocoesProps {
+interface Props {
   cadastros: Cadastro[];
 }
 
-export default function Promocoes({ cadastros }: PromocoesProps) {
-  const [precoMin, setPrecoMin] = useState<number | ''>('');
-  const [precoMax, setPrecoMax] = useState<number | ''>('');
-  const [tipoImovel, setTipoImovel] = useState<string>('');
-  const [finalidade, setFinalidade] = useState<string>('');
+export default function Promocoes({ cadastros }: Props) {
+  const [activeTab, setActiveTab] = useState<'publico' | 'campanhas'>('publico');
+  const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
-  const filteredCadastros = useMemo(() => {
-    return cadastros.filter(c => {
-      // Consider only active contracts or you can consider all? Usually active
-      if (c.status !== 'Ativo') return false;
+  const { campanhas, loading: loadingCampanhas, error: errorCampanhas, fetchCampanhas, saveCampanha, iniciarCampanha } = useCampanhas();
+  const { destinatarios, loading: loadingDest, error: errorDest, fetchDestinatarios, updateStatus } = useCampanhaDestinatarios(selectedCampanha?.id || null);
 
-      if (precoMin !== '' && (c.valorAluguel || 0) < Number(precoMin)) return false;
-      if (precoMax !== '' && (c.valorAluguel || 0) > Number(precoMax)) return false;
-      if (tipoImovel && c.tipoImovel !== tipoImovel) return false;
-      if (finalidade && c.finalidade !== finalidade) return false;
+  const [filtros, setFiltros] = useState<FiltrosPromocao>({
+    busca: '',
+    perfil: 'Todos',
+    valorMin: '',
+    valorMax: '',
+    tiposImovel: [],
+    finalidades: [],
+    condominios: [],
+    status: 'Ativo'
+  });
 
-      return true;
-    });
-  }, [cadastros, precoMin, precoMax, tipoImovel, finalidade]);
+  const condominiosDisponiveis = useMemo(() => {
+    const set = new Set((cadastros.map(c => c.condominio).filter(Boolean) as string[]));
+    return Array.from(set).sort();
+  }, [cadastros]);
+
+  const { contatos, totalExcluidos, totalCompartilhados } = useMemo(() => {
+    const todosVinculos = extrairVinculos(cadastros);
+    const vinculosFiltrados = aplicarFiltrosVinculos(todosVinculos, filtros);
+    const agrupados = agruparContatos(vinculosFiltrados, todosVinculos, filtros);
+    
+    const comTelefone = agrupados.filter(c => c.telefoneValido);
+    const semTelefone = agrupados.length - comTelefone.length;
+    const compartilhados = comTelefone.filter(c => c.telefoneCompartilhado).length;
+
+    return { 
+      contatos: comTelefone, 
+      totalExcluidos: semTelefone, 
+      totalCompartilhados: compartilhados 
+    };
+  }, [cadastros, filtros]);
+
+  // Carregar campanhas quando entrar na aba
+  useEffect(() => {
+    if (activeTab === 'campanhas') {
+      fetchCampanhas();
+    }
+  }, [activeTab, fetchCampanhas]);
+
+  // Carregar destinatários quando selecionar campanha
+  useEffect(() => {
+    if (selectedCampanha) {
+      fetchDestinatarios();
+    }
+  }, [selectedCampanha, fetchDestinatarios]);
+
+  const handleIniciarCriacao = () => {
+    if (contatos.length === 0) {
+      alert('Nenhum contato encontrado com os filtros atuais.');
+      return;
+    }
+    setIsCreating(true);
+  };
+
+  const handleSalvarEIniciar = async (nome: string, descricao: string, mensagem: string) => {
+    try {
+      const saved = await saveCampanha(nome, descricao, mensagem, JSON.stringify(filtros));
+      
+      const payloadDestinatarios = contatos.map(c => ({
+        contactKey: c.contactKey,
+        nome: c.nomes[0] || 'Cliente',
+        telefone: c.telefoneNormalizado,
+        perfisJson: JSON.stringify(c.perfis),
+        cadastroIdsJson: JSON.stringify(c.vinculosFiltrados.map(v => v.cadastroId)),
+        contratosJson: JSON.stringify(c.vinculosFiltrados.map(v => v.contrato)),
+        contextoJson: JSON.stringify({ originais: c.nomes }),
+        mensagemRenderizada: gerarTextoMensagem(mensagem, c, nome)
+      }));
+
+      await iniciarCampanha(saved, payloadDestinatarios);
+      
+      setIsCreating(false);
+      setActiveTab('campanhas');
+      setSelectedCampanha({ ...saved, status: 'INICIADA' });
+    } catch (err) {
+      throw err;
+    }
+  };
+
+  if (isCreating) {
+    return (
+      <div className="space-y-6 max-w-5xl mx-auto">
+        <h2 className="text-2xl font-bold">Criar Nova Campanha</h2>
+        <CampaignForm 
+          filtrosAtuais={filtros}
+          contatosEncontrados={contatos}
+          onIniciar={handleSalvarEIniciar}
+          onCancel={() => setIsCreating(false)}
+        />
+      </div>
+    );
+  }
+
+  if (selectedCampanha) {
+    return (
+      <div className="space-y-6 max-w-5xl mx-auto">
+        {loadingDest ? (
+          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground">
+             <Loader2 className="h-8 w-8 animate-spin mb-4" />
+             <p>Carregando destinatários da campanha...</p>
+          </div>
+        ) : errorDest ? (
+          <div className="p-8 bg-red-50 text-red-700 rounded-2xl border border-red-200 text-center">
+             <p>{errorDest}</p>
+             <button onClick={fetchDestinatarios} className="mt-4 px-4 py-2 bg-red-100 rounded-xl font-medium hover:bg-red-200">Tentar Novamente</button>
+          </div>
+        ) : (
+          <CampaignQueue 
+            campanha={selectedCampanha}
+            destinatarios={destinatarios}
+            onUpdateStatus={updateStatus}
+            onVoltar={() => setSelectedCampanha(null)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="text-xl font-bold text-foreground mb-4">Filtros de Promoção</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label className="mb-2 block text-sm font-medium text-muted-foreground">
-              Preço Mínimo (R$)
-            </label>
-            <input
-              type="number"
-              value={precoMin}
-              onChange={(e) => setPrecoMin(e.target.value ? Number(e.target.value) : '')}
-              className="w-full rounded-xl border border-border bg-background px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="0,00"
-            />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-muted-foreground">
-              Preço Máximo (R$)
-            </label>
-            <input
-              type="number"
-              value={precoMax}
-              onChange={(e) => setPrecoMax(e.target.value ? Number(e.target.value) : '')}
-              className="w-full rounded-xl border border-border bg-background px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              placeholder="0,00"
-            />
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-muted-foreground">
-              Tipo de Imóvel
-            </label>
-            <select
-              value={tipoImovel}
-              onChange={(e) => setTipoImovel(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">Todos</option>
-              <option value="Casa">Casa</option>
-              <option value="Apartamento">Apartamento</option>
-              <option value="Comercial">Comercial</option>
-              <option value="Terreno">Terreno</option>
-              <option value="Outro">Outro</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-muted-foreground">
-              Finalidade
-            </label>
-            <select
-              value={finalidade}
-              onChange={(e) => setFinalidade(e.target.value)}
-              className="w-full rounded-xl border border-border bg-background px-4 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">Todas</option>
-              <option value="Residencial">Residencial</option>
-              <option value="Comercial">Comercial</option>
-            </select>
-          </div>
-        </div>
+      {/* Tabs */}
+      <div className="flex bg-muted/50 p-1.5 rounded-xl border border-border w-full sm:w-fit">
+        <button
+          onClick={() => setActiveTab('publico')}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'publico' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <LayoutList className="h-4 w-4" /> Público e Filtros
+        </button>
+        <button
+          onClick={() => setActiveTab('campanhas')}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            activeTab === 'campanhas' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Megaphone className="h-4 w-4" /> Campanhas
+        </button>
       </div>
 
-      <div className="rounded-2xl border border-border bg-card p-0 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-border bg-muted/50 flex justify-between items-center">
-          <h3 className="font-semibold text-foreground">Resultados ({filteredCadastros.length})</h3>
+      {activeTab === 'publico' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+          <PromotionFilters 
+            filtros={filtros} 
+            onChange={setFiltros} 
+            condominiosDisponiveis={condominiosDisponiveis}
+          />
+          <div className="flex justify-end">
+            <button 
+              onClick={handleIniciarCriacao}
+              disabled={contatos.length === 0}
+              className="px-6 py-3 bg-brand-navy text-white rounded-xl font-medium shadow hover:bg-brand-navy/90 transition-all flex items-center gap-2 disabled:opacity-50"
+            >
+              <Megaphone className="h-5 w-5" />
+              Criar Campanha com estes {contatos.length} contatos
+            </button>
+          </div>
+          <AudienceResults 
+            contatos={contatos} 
+            totalExcluidos={totalExcluidos} 
+            totalCompartilhados={totalCompartilhados}
+          />
         </div>
-        <div className="divide-y divide-border">
-          {filteredCadastros.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              Nenhum contrato encontrado com estes filtros.
+      )}
+
+      {activeTab === 'campanhas' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-foreground">Campanhas</h2>
+            <button onClick={fetchCampanhas} className="text-sm text-primary hover:underline font-medium">Atualizar</button>
+          </div>
+          
+          {loadingCampanhas ? (
+            <div className="flex justify-center p-12 text-muted-foreground">
+               <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          ) : errorCampanhas ? (
+            <div className="p-6 bg-red-50 text-red-700 rounded-2xl border border-red-200">
+               {errorCampanhas}
+            </div>
+          ) : campanhas.length === 0 ? (
+            <div className="p-12 text-center border border-border rounded-2xl bg-card text-muted-foreground">
+              Nenhuma campanha criada ainda. Volte para "Público e Filtros" para criar a primeira.
             </div>
           ) : (
-            filteredCadastros.map(c => {
-              const whatsAppNumber = String(c.telInq).replace(/\D/g, '');
-              const whatsAppUrl = `https://wa.me/55${whatsAppNumber}`;
-
-              return (
-                <div key={c.id} className="p-4 hover:bg-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
-                  <div>
-                    <p className="font-medium text-foreground">{c.nomeInq || 'N/A'}</p>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-sm text-muted-foreground">
-                      <span>WhatsApp: {c.telInq || 'N/A'}</span>
-                      <span>Condomínio: {c.condominio || 'Nenhum / Não se aplica'}</span>
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {campanhas.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => (
+                <div key={c.id} className="bg-card border border-border p-5 rounded-2xl shadow-sm flex flex-col hover:border-primary/50 transition-colors">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="font-bold text-lg leading-tight line-clamp-2">{c.nome}</h3>
+                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full uppercase ${
+                      c.status === 'RASCUNHO' ? 'bg-slate-100 text-slate-700' : 
+                      c.status === 'INICIADA' ? 'bg-blue-100 text-blue-700' : 
+                      c.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {c.status}
+                    </span>
                   </div>
-                  <div>
-                    {c.telInq && (
-                      <a
-                        href={whatsAppUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-lg bg-[#25D366]/10 px-4 py-2 text-[#25D366] font-medium hover:bg-[#25D366]/20 transition-colors whitespace-nowrap"
-                      >
-                        <MessageSquare className="h-4 w-4" />
-                        Contato
-                      </a>
-                    )}
+                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2 min-h-[40px]">{c.descricao || 'Sem descrição'}</p>
+                  
+                  <div className="mt-auto space-y-4">
+                    <div className="flex justify-between text-sm bg-muted/40 p-3 rounded-xl border border-border/50">
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground text-xs">Público Total</span>
+                        <span className="font-bold">{c.audienciaTotal || '-'}</span>
+                      </div>
+                      <div className="flex flex-col text-right">
+                        <span className="text-muted-foreground text-xs">Criado em</span>
+                        <span className="font-medium">{new Date(c.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                    
+                    <button 
+                      onClick={() => setSelectedCampanha(c)}
+                      className="w-full py-2.5 bg-primary/10 text-primary hover:bg-primary/20 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                      {c.status === 'RASCUNHO' ? 'Continuar Edição' : 'Abrir Fila de Envio'} &rarr;
+                    </button>
                   </div>
                 </div>
-              );
-            })
+              ))}
+            </div>
           )}
         </div>
-      </div>
+      )}
     </div>
   );
 }

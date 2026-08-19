@@ -2,7 +2,7 @@ import { Cadastro, ChecklistDocs, TarefaConcluida, Usuario } from './types';
 
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbzL4JN0w6Kh_TM_V9A4V4YrgmfFMw-E8grL8ik6-HVsXeAKYc1JgqEQGCrNGUbYO0ou_g/exec';
 
-async function fetchGAS(payload: any, customTimeout = 60000) {
+export async function fetchGAS(payload: any, customTimeout = 60000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), customTimeout);
   
@@ -54,7 +54,7 @@ async function fetchGAS(payload: any, customTimeout = 60000) {
   }
 }
 
-async function fetchGET(action: string) {
+export async function fetchGET(action: string) {
   const response = await fetch(`${GAS_URL}?action=${action}`, { credentials: 'omit' });
   if (!response.ok) {
     if (response.status === 404) {
@@ -140,5 +140,25 @@ export const db = {
 
   deleteTarefa: async (idTarefa: string): Promise<void> => {
     await fetchGAS({ action: 'deleteTarefa', id: idTarefa });
+  },
+
+  getCampanhas: async (): Promise<any[]> => {
+    return fetchGET('getCampanhas');
+  },
+
+  saveCampanha: async (payload: any): Promise<any> => {
+    return await fetchGAS({ action: 'saveCampanha', payload });
+  },
+
+  iniciarCampanha: async (payload: any): Promise<any> => {
+    return await fetchGAS({ action: 'iniciarCampanha', payload }, 120000); // 2 minutes timeout for batch
+  },
+
+  getCampanhaDestinatarios: async (campanhaId: string): Promise<any[]> => {
+    return fetchGET(`getCampanhaDestinatarios&campanhaId=${campanhaId}`);
+  },
+
+  updateCampanhaDestinatario: async (payload: any): Promise<any> => {
+    return await fetchGAS({ action: 'updateCampanhaDestinatario', payload });
   }
 };

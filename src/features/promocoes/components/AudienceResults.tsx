@@ -90,6 +90,13 @@ export function AudienceResults({ contatos, totalExcluidos, totalCompartilhados 
                     </div>
                   </div>
 
+                  {c.perfis.includes('Proprietário') && (
+                    <div className="mt-1 mb-2 text-sm text-muted-foreground">
+                      <span className="font-semibold text-foreground">Inquilino(s):</span> {
+                        Array.from(new Set(c.vinculosFiltrados.map(v => v.nomeInquilino).filter(Boolean))).join(', ') || 'Nenhum'
+                      }
+                    </div>
+                  )}
                   <div className="mt-2 space-y-1">
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Vínculos que passaram no filtro ({c.vinculosFiltrados.length})</p>
                     {c.vinculosFiltrados.map((v, i) => (

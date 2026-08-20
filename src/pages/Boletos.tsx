@@ -96,7 +96,15 @@ export default function Boletos() {
   const term = searchTerm.toLowerCase()
   
   // 1. Envios: Cobranças pendentes do mês atual com vencimento próximo
-  const enviosCobrancas = cobrancas.filter(c => {
+  // Garantir que não haja boletos duplicados na renderização (mesmo contrato e vencimento)
+  const uniqueCobrancas = Array.from(
+    new Map(
+      cobrancas.map(c => [`${String(c.contrato).trim()}-${String(c.vencimento).trim()}`, c])
+    ).values()
+  );
+
+  // 1. Envios: Cobranças pendentes do mês atual com vencimento próximo
+  const enviosCobrancas = uniqueCobrancas.filter(c => {
     if (c.statusPagamento !== 'Pendente') return false;
     
     const aviso = checkCobrancaWarning(c.vencimento);
@@ -118,6 +126,7 @@ export default function Boletos() {
 
   const currentEnviosList = envioTab === 'pendentes' ? enviosPendentes : enviosConcluidos
   const totalEnvios = enviosCobrancas.length
+  console.log("enviosCobrancas", enviosCobrancas.length, enviosCobrancas.map(c => c.contrato + "-" + c.competencia + "-" + c.vencimento + "-" + c.id));
   const progressPercent = totalEnvios === 0 ? 0 : Math.round((enviosConcluidos.length / totalEnvios) * 100)
 
   // Separar em categorias de aviso (2_dias, 1_dia, hoje)
@@ -126,7 +135,7 @@ export default function Boletos() {
   const doisDias = currentEnviosList.filter(c => checkCobrancaWarning(c.vencimento) === '2_dias')
 
   // 2. Pendências: Cobranças pendentes e atrasadas
-  const pendingCobrancas = cobrancas.filter(c => {
+  const pendingCobrancas = uniqueCobrancas.filter(c => {
     if (c.statusPagamento !== 'Pendente') return false;
     
     // Check if it is atrasado

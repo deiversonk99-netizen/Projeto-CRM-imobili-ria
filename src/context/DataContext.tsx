@@ -48,7 +48,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setChecklists(checks || []);
       setTarefas(tars || []);
       setCondominios(conds || []);
-      setCobrancas(cobs || []);
+      
+      // Deduplicate cobrancas based on contrato + competencia + vencimento
+      const uniqueCobs = Array.from(
+        new Map(
+          (cobs || []).map(c => [`${c.contrato}-${c.competencia}-${c.vencimento}`, c])
+        ).values()
+      );
+      setCobrancas(uniqueCobs);
+
       return { cads, checks, tars, conds, cobs };
     } catch (err: any) {
       console.error('Error fetching data', err);

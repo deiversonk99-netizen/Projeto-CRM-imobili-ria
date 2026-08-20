@@ -310,7 +310,7 @@ export default function Resumo({ setTab }: { setTab: (tab: string) => void }) {
                       <span className={`text-xs font-semibold px-2 py-1 rounded-md ${
                         b.aviso === 'atrasado' || b.aviso === 'hoje' ? 'bg-red-100 text-red-700' : 'bg-brand-navy/10 text-brand-navy'
                       }`}>
-                        Venc: {b.vencimento.split('-').reverse().slice(0, 2).join('/')}
+                        Venc: {b.vencimento.includes('T') ? new Date(b.vencimento).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : b.vencimento.split('-').reverse().slice(0, 2).join('/')}
                       </span>
                     </div>
                   </li>

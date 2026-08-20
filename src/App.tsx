@@ -77,7 +77,7 @@ function AppContent() {
       {activeTab === 'renovacoes' && hasAccess(3) && <Renovacoes />}
       {activeTab === 'documentos' && hasAccess(4) && <Documentos />}
       {activeTab === 'boletos' && hasAccess(5) && <Boletos />}
-      {activeTab === 'promocoes' && hasAccess(6) && <Promocoes cadastros={cadastros} />}
+      {activeTab === 'promocoes' && <Promocoes cadastros={cadastros} />}
       
       {/* Fallback for unauthorized access to a tab */}
       {activeTab !== 'resumo' && (
@@ -86,7 +86,7 @@ function AppContent() {
         (activeTab === 'renovacoes' && !hasAccess(3)) ||
         (activeTab === 'documentos' && !hasAccess(4)) ||
         (activeTab === 'boletos' && !hasAccess(5)) ||
-        (activeTab === 'promocoes' && !hasAccess(6))
+        false /* Promocoes is open for everyone */
       ) && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">

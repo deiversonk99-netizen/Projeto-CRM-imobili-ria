@@ -13,6 +13,8 @@ export interface VinculoContratual {
   finalidade: string;
   condominio: string;
   telefoneValido: boolean;
+  nomeInquilino?: string;
+  nomeProprietario?: string;
 }
 
 export interface ContatoAgrupado {

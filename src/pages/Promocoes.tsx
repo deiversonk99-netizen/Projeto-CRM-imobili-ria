@@ -24,7 +24,7 @@ export default function Promocoes({ cadastros }: Props) {
 
   const [filtros, setFiltros] = useState<FiltrosPromocao>({
     busca: '',
-    perfil: 'Todos',
+    perfil: 'Proprietário',
     valorMin: '',
     valorMax: '',
     tiposImovel: [],
@@ -87,7 +87,11 @@ export default function Promocoes({ cadastros }: Props) {
         perfisJson: JSON.stringify(c.perfis),
         cadastroIdsJson: JSON.stringify(c.vinculosFiltrados.map(v => v.cadastroId)),
         contratosJson: JSON.stringify(c.vinculosFiltrados.map(v => v.contrato)),
-        contextoJson: JSON.stringify({ originais: c.nomes }),
+        contextoJson: JSON.stringify({ 
+          originais: c.nomes, 
+          inquilinos: Array.from(new Set(c.vinculosFiltrados.map(v => v.nomeInquilino).filter(Boolean))),
+          proprietarios: Array.from(new Set(c.vinculosFiltrados.map(v => v.nomeProprietario).filter(Boolean)))
+        }),
         mensagemRenderizada: gerarTextoMensagem(mensagem, c, nome)
       }));
 

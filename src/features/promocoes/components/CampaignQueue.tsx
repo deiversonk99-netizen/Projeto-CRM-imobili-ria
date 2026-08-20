@@ -136,6 +136,22 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                            <span key={p} className="px-1.5 py-0.5 bg-muted rounded text-[10px] uppercase">{p}</span>
                         ))}
                       </div>
+                      
+                      {(() => {
+                         try {
+                           const ctx = JSON.parse(d.contextoJson || '{}');
+                           const inqs = ctx.inquilinos || [];
+                           const perfis = d.perfisJson ? JSON.parse(d.perfisJson) : [];
+                           if (perfis.includes('Proprietário') && inqs.length > 0) {
+                             return (
+                               <div className="text-xs text-muted-foreground mt-1">
+                                 <span className="font-semibold">Inquilino(s):</span> {inqs.join(', ')}
+                               </div>
+                             );
+                           }
+                         } catch(e){}
+                         return null;
+                      })()}
 
                       <div className="mt-2 bg-background border border-border/50 rounded-lg p-3 text-sm text-foreground whitespace-pre-wrap">
                         {d.mensagemRenderizada}
@@ -145,6 +161,14 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                     <div className="shrink-0 flex flex-col gap-2 pt-2 md:pt-0 min-w-[200px]">
                       {d.status === 'PENDENTE' && (
                         <div className="flex flex-col gap-2">
+                          <button 
+                            disabled={isUpdating}
+                            onClick={() => handleAbrirWhatsApp(d)}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-xl font-medium hover:bg-[#20bd5a] transition-colors disabled:opacity-50"
+                          >
+                            {isUpdating ? <Loader2 className="h-4 w-4 animate-spin"/> : <MessageSquare className="h-4 w-4" />}
+                            1. Abrir WhatsApp
+                          </button>
                           <button 
                             disabled={isUpdating}
                             onClick={() => {
@@ -192,7 +216,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                       {(d.status === 'ENVIO_CONFIRMADO' || d.status === 'IGNORADO') && (
                         <div className="flex flex-col items-center justify-center h-full text-sm text-muted-foreground">
                           <span className="italic">Processado</span>
-                          <span className="text-xs">{new Date(d.envioConfirmadoEm || d.ignoradoEm || d.updatedAt).toLocaleTimeString()}</span>
+                          <span className="text-xs text-center">{new Date(d.envioConfirmadoEm || d.ignoradoEm || d.updatedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
                         </div>
                       )}
                     </div>

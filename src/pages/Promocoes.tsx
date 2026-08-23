@@ -7,7 +7,7 @@ import { PromotionFilters } from '../features/promocoes/components/PromotionFilt
 import { AudienceResults } from '../features/promocoes/components/AudienceResults';
 import { CampaignForm } from '../features/promocoes/components/CampaignForm';
 import { CampaignQueue } from '../features/promocoes/components/CampaignQueue';
-import { LayoutList, Megaphone, Loader2 } from 'lucide-react';
+import { LayoutList, Megaphone, Loader2, Trash2, Edit3, MoreVertical } from 'lucide-react';
 import { gerarTextoMensagem } from '../features/promocoes/domain';
 
 interface Props {
@@ -18,8 +18,14 @@ export default function Promocoes({ cadastros }: Props) {
   const [activeTab, setActiveTab] = useState<'publico' | 'campanhas'>('publico');
   const [selectedCampanha, setSelectedCampanha] = useState<Campanha | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [editingCampanha, setEditingCampanha] = useState<Campanha | null>(null);
+  const [deletingCampanha, setDeletingCampanha] = useState<Campanha | null>(null);
+  const [editNome, setEditNome] = useState('');
+  const [editDescricao, setEditDescricao] = useState('');
+  const [editMensagemTemplate, setEditMensagemTemplate] = useState('');
+  const [editFiltrosJson, setEditFiltrosJson] = useState('');
 
-  const { campanhas, loading: loadingCampanhas, error: errorCampanhas, fetchCampanhas, saveCampanha, iniciarCampanha } = useCampanhas();
+  const { campanhas, loading: loadingCampanhas, error: errorCampanhas, fetchCampanhas, saveCampanha, iniciarCampanha, deleteCampanha, updateCampanha } = useCampanhas();
   const { destinatarios, loading: loadingDest, error: errorDest, fetchDestinatarios, updateStatus } = useCampanhaDestinatarios(selectedCampanha?.id || null);
 
   const [filtros, setFiltros] = useState<FiltrosPromocao>({
@@ -74,6 +80,39 @@ export default function Promocoes({ cadastros }: Props) {
       return;
     }
     setIsCreating(true);
+  };
+
+  const handleDelete = (c: Campanha) => {
+    setDeletingCampanha(c);
+  };
+  
+  const confirmDelete = async () => {
+    if (!deletingCampanha) return;
+    try {
+      await deleteCampanha(deletingCampanha.id);
+      setDeletingCampanha(null);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao excluir campanha.');
+    }
+  };
+
+  const handleEdit = (c: Campanha) => {
+    setEditingCampanha(c);
+    setEditNome(c.nome);
+    setEditDescricao(c.descricao || '');
+    setEditMensagemTemplate(c.mensagemTemplate || '');
+    setEditFiltrosJson(c.filtrosJson || '{}');
+  };
+
+  const saveEdit = async () => {
+    if (!editingCampanha) return;
+    try {
+      await updateCampanha(editingCampanha.id, { nome: editNome, descricao: editDescricao, mensagemTemplate: editMensagemTemplate, filtrosJson: editFiltrosJson });
+      setEditingCampanha(null);
+    } catch (err) {
+      alert('Erro ao editar campanha.');
+    }
   };
 
   const handleSalvarEIniciar = async (nome: string, descricao: string, mensagem: string) => {
@@ -215,14 +254,22 @@ export default function Promocoes({ cadastros }: Props) {
               {campanhas.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map(c => (
                 <div key={c.id} className="bg-card border border-border p-5 rounded-2xl shadow-sm flex flex-col hover:border-primary/50 transition-colors">
                   <div className="flex justify-between items-start mb-3">
-                    <h3 className="font-bold text-lg leading-tight line-clamp-2">{c.nome}</h3>
-                    <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full uppercase ${
-                      c.status === 'RASCUNHO' ? 'bg-slate-100 text-slate-700' : 
-                      c.status === 'INICIADA' ? 'bg-blue-100 text-blue-700' : 
-                      c.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {c.status}
-                    </span>
+                    <h3 className="font-bold text-lg leading-tight line-clamp-2 pr-2">{c.nome}</h3>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full uppercase ${
+                        c.status === 'RASCUNHO' ? 'bg-slate-100 text-slate-700' : 
+                        c.status === 'INICIADA' ? 'bg-blue-100 text-blue-700' : 
+                        c.status === 'CONCLUIDA' ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'
+                      }`}>
+                        {c.status}
+                      </span>
+                      <button onClick={() => handleEdit(c)} className="p-1.5 text-muted-foreground hover:bg-slate-100 rounded-lg transition-colors" title="Editar">
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDelete(c)} className="p-1.5 text-muted-foreground hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Excluir">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                   <p className="text-sm text-muted-foreground mb-4 line-clamp-2 min-h-[40px]">{c.descricao || 'Sem descrição'}</p>
                   
@@ -251,6 +298,91 @@ export default function Promocoes({ cadastros }: Props) {
           )}
         </div>
       )}
-    </div>
+    
+
+      {deletingCampanha && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl text-center">
+            <h2 className="text-xl font-bold text-slate-800 mb-2">Excluir Campanha</h2>
+            <p className="text-slate-600 mb-6">
+              Tem certeza que deseja excluir a campanha <strong className="text-slate-800">"{deletingCampanha.nome}"</strong>? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button 
+                onClick={() => setDeletingCampanha(null)}
+                className="px-4 py-2 font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors flex-1"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="px-4 py-2 font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors flex-1"
+              >
+                Sim, excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {editingCampanha && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h2 className="text-xl font-bold mb-4">Editar Campanha</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Campanha</label>
+                <input 
+                  type="text" 
+                  value={editNome} 
+                  onChange={(e) => setEditNome(e.target.value)} 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Descrição</label>
+                <textarea 
+                  value={editDescricao} 
+                  onChange={(e) => setEditDescricao(e.target.value)} 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none"
+                  rows={3}
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Mensagem (Template)</label>
+                <textarea 
+                  value={editMensagemTemplate}
+                  onChange={(e) => setEditMensagemTemplate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none"
+                  rows={6}
+                ></textarea>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Filtros (JSON)</label>
+                <textarea 
+                  value={editFiltrosJson}
+                  onChange={(e) => setEditFiltrosJson(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-navy resize-none font-mono text-xs"
+                  rows={4}
+                ></textarea>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button 
+                onClick={() => setEditingCampanha(null)} 
+                className="px-4 py-2 text-slate-600 hover:bg-slate-100 font-medium rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={saveEdit} 
+                className="px-4 py-2 bg-brand-navy text-white font-medium rounded-lg hover:bg-brand-navy/90 transition-colors"
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+</div>
   );
 }

@@ -15,7 +15,20 @@ export function useCampanhas() {
     setError(null);
     try {
       const data = await db.getCampanhas();
-      setCampanhas(data || []);
+      
+      // Filtro de proteção contra duplicidades e erros de ID no react
+      const deduplicated = [];
+      const seen = new Set();
+      const sorted = (data || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      for (const item of sorted) {
+        if (!seen.has(item.id)) {
+          seen.add(item.id);
+          deduplicated.push(item);
+        }
+      }
+      
+      setCampanhas(deduplicated);
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar campanhas');
     } finally {
@@ -79,13 +92,26 @@ export function useCampanhas() {
     }
   };
 
+  // Funções ajustadas para deletar e editar de verdade
+  const deleteCampanha = async (id: string) => {
+    await db.deleteCampanha(id);
+    setCampanhas(prev => prev.filter(c => c.id !== id));
+  };
+
+  const updateCampanha = async (id: string, payload: Partial<Campanha>) => {
+    await db.updateCampanha({ id, ...payload });
+    setCampanhas(prev => prev.map(c => c.id === id ? { ...c, ...payload, updatedAt: new Date().toISOString() } : c));
+  };
+
   return {
     campanhas,
     loading,
     error,
     fetchCampanhas,
     saveCampanha,
-    iniciarCampanha
+    iniciarCampanha,
+    deleteCampanha,
+    updateCampanha
   };
 }
 
@@ -121,9 +147,7 @@ export function useCampanhaDestinatarios(campanhaId: string | null) {
       status,
       ...extra
     };
-
     const data = await db.updateCampanhaDestinatario(payload);
-
     setDestinatarios(prev => prev.map(d => 
       d.id === destinatarioId 
         ? { ...d, status, ...extra, version: data.version } 

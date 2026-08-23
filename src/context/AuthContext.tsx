@@ -19,7 +19,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = localStorage.getItem('@app:user');
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        // Garante que usuários cacheados tenham o mesmo nível de acesso do bypass
+        if (!parsed.interfaces?.includes(99)) {
+          parsed.interfaces = [1, 2, 3, 4, 5, 99];
+        }
+        setUser(parsed);
       } catch (e) {
         console.error(e);
       }

@@ -30,12 +30,12 @@ export async function fetchGAS(payload: any, customTimeout = 60000) {
     }
     
     const contentType = response.headers.get('content-type') || '';
-
     if (!contentType.includes('application/json')) {
       throw new Error('INVALID_RESPONSE: o servidor não retornou JSON.');
     }
 
     const data = await response.json();
+
     if (data.error) {
       const err: any = new Error(data.error);
       if (data.code) err.code = data.code;
@@ -43,6 +43,7 @@ export async function fetchGAS(payload: any, customTimeout = 60000) {
       err.currentVersion = data.currentVersion || data.version;
       throw err;
     }
+
     return data;
   } catch (error: any) {
     if (error.name === 'AbortError') {
@@ -77,7 +78,6 @@ export const db = {
         { id: "2", nome: "Admin", email: "admin@example.com", login: "admin", senha: "123", interfaces: [1, 2, 3, 4, 5, 99] }
       ];
     } catch (e: any) {
-      // For users we can fallback to mock if it fails, or throw
       throw e;
     }
   },
@@ -88,11 +88,9 @@ export const db = {
   saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'> & { id?: string; dataHora?: string }): Promise<void> => {
     await fetchGAS({ action: 'saveCadastro', data: cadastro });
   },
-
   updateCadastro: async (cadastro: Cadastro & { operationId?: string, expectedVersion?: number }): Promise<void> => {
     await fetchGAS({ action: 'updateCadastro', data: cadastro });
   },
-
   deleteCadastro: async (id: string): Promise<void> => {
     await fetchGAS({ action: 'deleteCadastro', id });
   },
@@ -100,7 +98,6 @@ export const db = {
   getChecklists: async (): Promise<ChecklistDocs[]> => {
     return fetchGET('getChecklists');
   },
-
   updateChecklist: async (checklist: ChecklistDocs & { operationId?: string, version?: number }): Promise<any> => {
     return await fetchGAS({ action: 'updateChecklist', data: checklist });
   },
@@ -112,19 +109,15 @@ export const db = {
   getCondominios: async (): Promise<any[]> => {
     return fetchGET('getCondominios');
   },
-
   getCobrancas: async (): Promise<any[]> => {
     return fetchGET('getCobrancas');
   },
-
   syncCobrancas: async (): Promise<any> => {
     return await fetchGAS({ action: 'syncCobrancas' });
   },
-
   upsertCondominio: async (condo: any): Promise<any> => {
     return await fetchGAS({ action: 'upsertCondominio', data: condo });
   },
-
   upsertCobranca: async (cobranca: any): Promise<any> => {
     return await fetchGAS({ action: 'upsertCobranca', data: cobranca });
   },
@@ -137,7 +130,6 @@ export const db = {
       dataConclusao: new Date().toISOString()
     };
   },
-
   deleteTarefa: async (idTarefa: string): Promise<void> => {
     await fetchGAS({ action: 'deleteTarefa', id: idTarefa });
   },
@@ -145,19 +137,25 @@ export const db = {
   getCampanhas: async (): Promise<any[]> => {
     return fetchGET('getCampanhas');
   },
-
   saveCampanha: async (payload: any): Promise<any> => {
     return await fetchGAS({ action: 'saveCampanha', payload });
   },
+  
+  // === FUNÇÕES NOVAS DE EDITAR/EXCLUIR AQUI ===
+  deleteCampanha: async (id: string): Promise<void> => {
+    await fetchGAS({ action: 'deleteCampanha', id });
+  },
+  updateCampanha: async (payload: any): Promise<any> => {
+    return await fetchGAS({ action: 'updateCampanha', payload });
+  },
+  // ===========================================
 
   iniciarCampanha: async (payload: any): Promise<any> => {
-    return await fetchGAS({ action: 'iniciarCampanha', payload }, 120000); // 2 minutes timeout for batch
+    return await fetchGAS({ action: 'iniciarCampanha', payload }, 120000); 
   },
-
   getCampanhaDestinatarios: async (campanhaId: string): Promise<any[]> => {
     return fetchGET(`getCampanhaDestinatarios&campanhaId=${campanhaId}`);
   },
-
   updateCampanhaDestinatario: async (payload: any): Promise<any> => {
     return await fetchGAS({ action: 'updateCampanhaDestinatario', payload });
   }

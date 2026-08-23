@@ -148,6 +148,10 @@ function handleRequest(body) {
       return iniciarCampanha(data.payload);
     } else if (action === 'updateCampanhaDestinatario') {
       return updateCampanhaDestinatario(data.payload);
+    } else if (action === 'deleteCampanha') {
+      return deleteCampanha(data.id);
+    } else if (action === 'updateCampanha') {
+      return updateCampanhaSimples(data.payload);
     }
 
     return { error: 'Action not handled in POST' };
@@ -157,6 +161,48 @@ function handleRequest(body) {
     if (lock.hasLock()) lock.releaseLock();
   }
 }
+
+// === NOVAS FUNÇÕES PARA EDITAR/EXCLUIR CAMPANHA DIRETAMENTE ===
+function deleteCampanha(id) {
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Campanhas');
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === id) { 
+      sheet.deleteRow(i + 1); 
+      return { success: true };
+    }
+  }
+  return { error: 'Campanha not found' };
+}
+
+function updateCampanhaSimples(payload) {
+  const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName('Campanhas');
+  const textFinder = sheet.getRange("A:A").createTextFinder(payload.id).matchEntireCell(true);
+  const match = textFinder.findNext();
+  
+  if (!match) return { error: 'Campanha not found' };
+
+  const row = match.getRow();
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  
+  const updates = {};
+  if (payload.nome !== undefined) updates['nome'] = payload.nome;
+  if (payload.descricao !== undefined) updates['descricao'] = payload.descricao;
+  if (payload.mensagemTemplate !== undefined) updates['mensagemTemplate'] = payload.mensagemTemplate;
+  if (payload.filtrosJson !== undefined) updates['filtrosJson'] = payload.filtrosJson;
+  updates['updatedAt'] = new Date().toISOString();
+
+  for (const key in updates) {
+    const idx = headers.indexOf(key);
+    if (idx !== -1) {
+       sheet.getRange(row, idx + 1).setValue(updates[key]);
+    }
+  }
+
+  return { success: true };
+}
+// ==============================================================
 
 function getSheetData(sheetName) {
   const sheet = SpreadsheetApp.openById('1_mfjDq3noSckcJd-qJD3-H4cJEV5TAOdSzPBhSPN5sU').getSheetByName(sheetName);

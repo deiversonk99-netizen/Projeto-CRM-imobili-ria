@@ -988,18 +988,52 @@ function upsertCobranca(cobrancaData) {
 
 function normalizeCompetencia_(value) {
   if (value instanceof Date && !isNaN(value.getTime())) {
-    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM');
+    // Competência representa mês civil, não um instante. Usar UTC evita que
+    // meia-noite do primeiro dia volte para o mês anterior por causa do fuso.
+    return value.getUTCFullYear() + '-' + String(value.getUTCMonth() + 1).padStart(2, '0');
   }
 
   const text = String(value || '').trim();
   const match = text.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);
   if (match) return match[1] + '-' + String(Number(match[2])).padStart(2, '0');
 
+  const brazilianDate = text.match(/^\d{1,2}\/(\d{1,2})\/(\d{4})$/);
+  if (brazilianDate) return brazilianDate[2] + '-' + String(Number(brazilianDate[1])).padStart(2, '0');
+
   const parsed = new Date(text);
   if (!isNaN(parsed.getTime())) {
     return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM');
   }
   return text;
+}
+
+function cobrancaKey_(cadastroId, competencia) {
+  return String(cadastroId === null || cadastroId === undefined ? '' : cadastroId).trim() + '|' + normalizeCompetencia_(competencia);
+}
+
+function getCobrancaKeysFromSheet_(sheet) {
+  const keys = new Set();
+  if (!sheet || sheet.getLastRow() <= 1) return keys;
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  const cadastroIndex = headers.indexOf('cadastroId');
+  const competenciaIndex = headers.indexOf('competencia');
+  if (cadastroIndex === -1 || competenciaIndex === -1) {
+    throw new Error('SCHEMA_OUTDATED: cadastroId ou competencia ausente em Cobrancas.');
+  }
+
+  const range = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length);
+  const values = range.getValues();
+  const displayValues = range.getDisplayValues();
+  values.forEach(function(row, index) {
+    const cadastroId = row[cadastroIndex] !== '' ? row[cadastroIndex] : displayValues[index][cadastroIndex];
+    const candidates = [row[competenciaIndex], displayValues[index][competenciaIndex]];
+    candidates.forEach(function(candidate) {
+      const competencia = normalizeCompetencia_(candidate);
+      if (competencia) keys.add(cobrancaKey_(cadastroId, competencia));
+    });
+  });
+  return keys;
 }
 
 function gerarCobrancasMensais(monthsBack, useLock) {
@@ -1027,15 +1061,13 @@ function gerarCobrancasMensais(monthsBack, useLock) {
       const currentMonth = targetDateForMonth.getMonth() + 1;
       const competencia = `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
 
-      const existingCobrancas = new Set(
-        cobrancasData.map(c => String(c.cadastroId) + '|' + normalizeCompetencia_(c.competencia))
-      );
+      const existingCobrancas = getCobrancaKeysFromSheet_(sheetCobrancas);
 
-      const newCobrancas = [];
+      let newCobrancas = [];
 
       cadastrosData.forEach(cad => {
         if (cad.status !== 'Ativo' || cad.deletedAt) return;
-        const cobrancaKey = String(cad.id) + '|' + competencia;
+        const cobrancaKey = cobrancaKey_(cad.id, competencia);
         if (existingCobrancas.has(cobrancaKey)) return;
         if (!cad.diaVencimento) return;
 
@@ -1077,6 +1109,20 @@ function gerarCobrancasMensais(monthsBack, useLock) {
         newCobrancas.push(row);
         existingCobrancas.add(cobrancaKey);
       });
+
+      if (newCobrancas.length > 0) {
+        // Última reconciliação imediatamente antes da escrita. Além de cobrir
+        // representações antigas de data, impede qualquer inserção repetida.
+        const persistedKeys = getCobrancaKeysFromSheet_(sheetCobrancas);
+        const cadastroColumn = headers.indexOf('cadastroId');
+        const competenciaColumnIndex = headers.indexOf('competencia');
+        newCobrancas = newCobrancas.filter(function(row) {
+          const key = cobrancaKey_(row[cadastroColumn], row[competenciaColumnIndex]);
+          if (persistedKeys.has(key)) return false;
+          persistedKeys.add(key);
+          return true;
+        });
+      }
 
       if (newCobrancas.length > 0) {
         const appendRow = sheetCobrancas.getLastRow() + 1;

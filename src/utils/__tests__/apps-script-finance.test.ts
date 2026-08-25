@@ -25,6 +25,8 @@ describe('normalização financeira do Apps Script', () => {
     ['"2026-08"', '2026-08'],
     ['"2026-8-1"', '2026-08'],
     ['"2026-08-01T03:00:00.000Z"', '2026-08'],
+    ['"01/08/2026"', '2026-08'],
+    ['new Date("2026-08-01T00:00:00.000Z")', '2026-08'],
     ['new Date("2026-08-01T12:00:00.000Z")', '2026-08'],
   ])('normaliza %s para uma competência canônica', (expression, expected) => {
     const context = createAppsScriptContext();
@@ -34,7 +36,12 @@ describe('normalização financeira do Apps Script', () => {
   });
 
   it('não compara competência da planilha diretamente com a string do mês', () => {
-    expect(source).toContain("normalizeCompetencia_(c.competencia)");
+    expect(source).toContain('getCobrancaKeysFromSheet_(sheetCobrancas)');
     expect(source).not.toContain("filter(c => c.competencia === competencia)");
+  });
+
+  it('reconfere as chaves persistidas imediatamente antes de inserir', () => {
+    expect(source).toContain('getCobrancaKeysFromSheet_(sheetCobrancas)');
+    expect(source).toContain('if (persistedKeys.has(key)) return false;');
   });
 });

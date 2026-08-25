@@ -15,9 +15,15 @@ const checkboxClass =
 
 export interface ExtendedChecklist extends ChecklistDocs {
   docsExtras: DocumentoExtra[]
+  integrityError?: string
 }
 
-const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
+interface ParsedDocuments {
+  docsExtras: DocumentoExtra[]
+  integrityError?: string
+}
+
+const parseDocs = (jsonStr?: string, checklistVersion?: number): ParsedDocuments => {
   const defaultDocs: DocumentoExtra[] = [
     // LOCADOR
     { id: 'doc_def_locador_cnh', nome: 'CNH (CPF/RG)', categoria: 'Locador', isFeito: false, pendencia: '' },
@@ -52,37 +58,36 @@ const parseDocs = (jsonStr?: string): DocumentoExtra[] => {
     { id: 'doc_def_contrato_vistoria', nome: 'Vistoria de Entrada', categoria: 'Contratos', isFeito: false, pendencia: '' }
   ];
 
-  if (!jsonStr || jsonStr === '[]') {
-    return defaultDocs.map(def => ({
+  if (!jsonStr || (jsonStr === '[]' && Number(checklistVersion || 1) <= 1)) {
+    return { docsExtras: defaultDocs.map(def => ({
       ...def,
       status: def.isFeito ? 'Feito' : 'Pendente'
-    }));
+    })) };
+  }
+
+  if (jsonStr === '[]') {
+    return { docsExtras: [] };
   }
   
   try {
-    const parsed = JSON.parse(jsonStr) as DocumentoExtra[];
+    const parsed = JSON.parse(jsonStr) as unknown;
+    if (!Array.isArray(parsed)) throw new Error('documentos_json não contém uma lista');
+    if (parsed.some(doc => !doc || typeof doc !== 'object' || !String((doc as DocumentoExtra).id || '').trim() || !String((doc as DocumentoExtra).nome || '').trim())) {
+      throw new Error('documentos_json contém documentos sem id ou nome');
+    }
     const result = parsed.map(doc => ({
-      ...doc,
-      status: doc.status || (doc.isFeito ? 'Feito' : 'Pendente')
+      ...(doc as DocumentoExtra),
+      status: (doc as DocumentoExtra).status || ((doc as DocumentoExtra).isFeito ? 'Feito' : 'Pendente')
     }));
-    
-    // Adicionar novos documentos padrão que possam estar faltando em checklists antigos
-    defaultDocs.forEach(def => {
-      if (!result.some(r => r.nome === def.nome && r.categoria === def.categoria)) {
-        result.push({
-          ...def,
-          status: def.isFeito ? 'Feito' : 'Pendente'
-        });
-      }
-    });
-    
-    return result;
+
+    // Um item removido pelo usuário não é recriado silenciosamente no próximo reload.
+    return { docsExtras: result };
   } catch (e) {
     console.error("Invalid JSON in documentos_json", e);
-    return defaultDocs.map(def => ({
-      ...def,
-      status: def.isFeito ? 'Feito' : 'Pendente'
-    }));
+    return {
+      docsExtras: [],
+      integrityError: 'Os documentos salvos estão corrompidos. O salvamento foi bloqueado para preservar os dados; restaure o JSON na planilha ou em um backup.'
+    };
   }
 }
 
@@ -105,7 +110,7 @@ export default function Documentos() {
     setChecklists(
       contextChecklists.map((c) => ({
         ...c,
-        docsExtras: parseDocs(c.documentos_json)
+        ...parseDocs(c.documentos_json, c.version)
       }))
     )
   }

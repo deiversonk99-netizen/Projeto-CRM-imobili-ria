@@ -1,34 +1,32 @@
 import { Cadastro } from '../../types';
 import { ContatoAgrupado, FiltrosPromocao, VinculoContratual } from './types';
+import { buildWhatsAppLink, normalizeBrazilianPhone } from '../../utils/whatsapp';
 
 export function normalizarTelefone(tel: string | undefined | null): string {
-  if (!tel) return '';
-  let digits = tel.replace(/\D/g, '');
-  digits = digits.replace(/^0+/, '');
-  
-  if (digits.length === 10 || digits.length === 11) {
-    return '55' + digits;
-  }
-  
-  if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
-    return digits;
-  }
-  
-  return digits;
+  return normalizeBrazilianPhone(tel);
 }
 
 export function isTelefoneValido(telNormalizado: string): boolean {
   if (!telNormalizado) return false;
-  // Brazilian mobile: 55 + 2 digits (DD) + 9 digits (number) = 13 digits
-  // Brazilian landline: 55 + 2 digits (DD) + 8 digits = 12 digits
-  return telNormalizado.length >= 12 && telNormalizado.length <= 13;
+  return /^55[1-9]{2}\d{8,9}$/.test(telNormalizado);
+}
+
+export function parseValorMonetario(value: number | string | undefined | null): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (!value) return null;
+  const normalized = String(value).replace(/R\$/gi, '').replace(/\s/g, '');
+  const decimal = normalized.includes(',')
+    ? normalized.replace(/\./g, '').replace(',', '.')
+    : normalized;
+  const parsed = Number(decimal);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function extrairVinculos(cadastros: Cadastro[]): VinculoContratual[] {
   const vinculos: VinculoContratual[] = [];
   
   for (const c of cadastros) {
-    const valorAluguel = typeof c.valorAluguel === 'string' ? parseFloat(c.valorAluguel) : (c.valorAluguel ?? null);
+    const valorAluguel = parseValorMonetario(c.valorAluguel);
     
     // Proprietário
     if (c.nomeProp) {
@@ -78,6 +76,8 @@ export function extrairVinculos(cadastros: Cadastro[]): VinculoContratual[] {
 
 export function aplicarFiltrosVinculos(vinculos: VinculoContratual[], filtros: FiltrosPromocao): VinculoContratual[] {
   return vinculos.filter(v => {
+    if (filtros.perfil === 'Proprietário' && v.perfil !== 'Proprietário') return false;
+    if (filtros.perfil === 'Inquilino' && v.perfil !== 'Inquilino') return false;
     if (filtros.status && v.status !== filtros.status) return false;
     
     if (filtros.valorMin !== '') {
@@ -105,23 +105,25 @@ export function agruparContatos(vinculosFiltrados: VinculoContratual[], todosVin
   // MAS precisamos saber todos os perfis da pessoa para os filtros combinados (ex: "Proprietário e inquilino").
   // Então agrupamos TODOS os vínculos primeiro, depois removemos.
   
+  const contactKeyFor = (vinculo: VinculoContratual) => vinculo.telefoneNormalizado || `sem-telefone:${vinculo.cadastroId}:${vinculo.perfil}`;
   const agrupamentoGlobal = new Map<string, VinculoContratual[]>();
   for (const v of todosVinculos) {
-    if (!v.telefoneNormalizado) continue;
-    if (!agrupamentoGlobal.has(v.telefoneNormalizado)) {
-      agrupamentoGlobal.set(v.telefoneNormalizado, []);
+    const key = contactKeyFor(v);
+    if (!agrupamentoGlobal.has(key)) {
+      agrupamentoGlobal.set(key, []);
     }
-    agrupamentoGlobal.get(v.telefoneNormalizado)!.push(v);
+    agrupamentoGlobal.get(key)!.push(v);
   }
 
   // Identificar quais contatos têm vínculos que passaram no filtro (usando o contactKey)
-  const telefonesComMatch = new Set(vinculosFiltrados.filter(v => v.telefoneNormalizado).map(v => v.telefoneNormalizado));
+  const telefonesComMatch = new Set(vinculosFiltrados.map(contactKeyFor));
 
   for (const tel of telefonesComMatch) {
     const vinculosDoContato = agrupamentoGlobal.get(tel) || [];
     
-    // Perfil global da pessoa (para o filtro de Perfil)
-    const perfisSet = new Set(vinculosDoContato.map(v => v.perfil));
+    const vinculosMatchFiltros = vinculosFiltrados.filter(v => contactKeyFor(v) === tel);
+    if (vinculosMatchFiltros.length === 0) continue;
+    const perfisSet = new Set(vinculosMatchFiltros.map(v => v.perfil));
     
     // Aplicação do filtro de Perfil Global (Todos, Proprietário, Inquilino, Ambas)
     let passouFiltroPerfil = false;
@@ -147,16 +149,13 @@ export function agruparContatos(vinculosFiltrados: VinculoContratual[], todosVin
       const termoBusca = filtros.busca.toLowerCase();
       const matchNome = nomes.some(n => n.toLowerCase().includes(termoBusca));
       const matchTelefone = tel.includes(termoBusca) || telefoneOriginal.includes(termoBusca);
-      const matchContrato = vinculosDoContato.some(v => v.contrato.toLowerCase().includes(termoBusca));
+      const matchContrato = vinculosMatchFiltros.some(v => v.contrato.toLowerCase().includes(termoBusca));
       if (!matchNome && !matchTelefone && !matchContrato) {
         continue;
       }
     }
 
-    const vinculosMatchFiltros = vinculosFiltrados.filter(v => v.telefoneNormalizado === tel);
-    if (vinculosMatchFiltros.length === 0) continue; // Pode acontecer se apenas falhou na busca, mas já checamos telefonesComMatch
-
-    const nomeFormatado = nomes.map(n => n.toLowerCase());
+    const nomeFormatado = nomes.map(n => n.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase());
     const nomesNormalizados = new Set(nomeFormatado);
     const telefoneCompartilhado = nomesNormalizados.size > 1;
 
@@ -164,11 +163,11 @@ export function agruparContatos(vinculosFiltrados: VinculoContratual[], todosVin
       contactKey: tel,
       nomes,
       telefoneOriginal,
-      telefoneNormalizado: tel,
+      telefoneNormalizado: vinculosDoContato[0]?.telefoneNormalizado || '',
       perfis: Array.from(perfisSet),
       vinculos: vinculosDoContato,
       vinculosFiltrados: vinculosMatchFiltros,
-      telefoneValido: isTelefoneValido(tel),
+      telefoneValido: isTelefoneValido(vinculosDoContato[0]?.telefoneNormalizado || ''),
       telefoneCompartilhado,
     });
   }
@@ -190,7 +189,13 @@ export function gerarTextoMensagem(template: string, contato: ContatoAgrupado, c
     .replace(/{{condominios}}/g, condominios);
 }
 
+const PLACEHOLDERS_SUPORTADOS = new Set(['nome', 'perfil', 'campanha', 'contratos', 'condominios']);
+
+export function placeholdersDesconhecidos(template: string): string[] {
+  const encontrados = Array.from(template.matchAll(/{{\s*([^{}]+?)\s*}}/g)).map(match => match[1]);
+  return Array.from(new Set(encontrados.filter(item => !PLACEHOLDERS_SUPORTADOS.has(item))));
+}
+
 export function criarLinkWhatsApp(telefone: string, mensagem: string): string {
-  if (!telefone) return '';
-  return `https://wa.me/${telefone}?text=${encodeURIComponent(mensagem)}`;
+  return buildWhatsAppLink(telefone, mensagem);
 }

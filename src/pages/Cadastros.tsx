@@ -39,8 +39,10 @@ export default function Cadastros() {
   const [tabStatus, setTabStatus] = useState('Todos')
   
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
-  const [cadastroToDelete, setCadastroToDelete] = useState<string | null>(null)
+  const [cadastroToDelete, setCadastroToDelete] = useState<Cadastro | null>(null)
+  const [deleteOperationId, setDeleteOperationId] = useState<string | null>(null)
   const [currentRequestId, setCurrentRequestId] = useState<string | null>(null)
+  const [renewingFromId, setRenewingFromId] = useState<string | null>(null)
   const [currentEditOperationId, setCurrentEditOperationId] = useState<string | null>(null)
   const [editVersion, setEditVersion] = useState<number>(1)
 
@@ -103,6 +105,7 @@ export default function Cadastros() {
   const handleEdit = (cadastro: Cadastro) => {
     setEditingId(cadastro.id)
     setCurrentRequestId(null)
+    setRenewingFromId(null)
     setCurrentEditOperationId(uuidv4())
     setEditVersion((cadastro as any).version || 1)
     setFormData({
@@ -132,6 +135,9 @@ export default function Cadastros() {
 
   const handleRenew = (cadastro: Cadastro) => {
     setEditingId(null) // It will be created as a new record
+    setCurrentRequestId(uuidv4())
+    setCurrentEditOperationId(null)
+    setRenewingFromId(cadastro.id)
     setFormData({
       contrato: `${cadastro.contrato}-REN`,
       nomeProp: cadastro.nomeProp,
@@ -142,7 +148,7 @@ export default function Cadastros() {
       telInq: cadastro.telInq,
       niverInq: parseIsoToDDMM(cadastro.niverInq),
       emailInq: cadastro.emailInq || '',
-      inicioContrato: cadastro.fimContrato.split('T')[0], // start from previous end
+      inicioContrato: String(cadastro.fimContrato || '').split('T')[0], // start from previous end
       fimContrato: '', // require new end date
       corretor: cadastro.corretor,
       diaVencimento: cadastro.diaVencimento,
@@ -162,26 +168,35 @@ export default function Cadastros() {
     if (!cadastroToDelete) return;
     setLoading(true)
     try {
-      await db.deleteCadastro(cadastroToDelete)
+      await db.deleteCadastro({
+        id: cadastroToDelete.id,
+        expectedVersion: cadastroToDelete.version || 1,
+        operationId: deleteOperationId || uuidv4(),
+      })
       await refreshData()
-      addToast('Cadastro excluído com sucesso!', 'success')
+      addToast('Cadastro arquivado com sucesso! O histórico foi preservado.', 'success')
       setDeleteModalOpen(false)
       setCadastroToDelete(null)
+      setDeleteOperationId(null)
     } catch (error) {
-      addToast('Erro ao excluir cadastro.', 'error')
+      addToast(`Erro ao arquivar cadastro: ${error instanceof Error ? error.message : 'falha desconhecida'}`, 'error')
     } finally {
       setLoading(false)
     }
   }
 
   const confirmDelete = (id: string) => {
-    setCadastroToDelete(id)
+    const cadastro = cadastros.find(item => item.id === id)
+    if (!cadastro) return
+    setCadastroToDelete(cadastro)
+    setDeleteOperationId(uuidv4())
     setDeleteModalOpen(true)
   }
 
   const handleNew = () => {
     setEditingId(null)
     setCurrentRequestId(uuidv4())
+    setRenewingFromId(null)
     setFormData({
       contrato: '',
       nomeProp: '',
@@ -264,14 +279,19 @@ export default function Cadastros() {
         await db.updateCadastro({ ...formData, id: editingId, dataHora: new Date().toISOString(), operationId: currentEditOperationId || undefined, expectedVersion: editVersion })
         addToast('Cadastro atualizado com sucesso!', 'success')
       } else {
-        await db.saveCadastro({ ...formData, id: currentRequestId || uuidv4() })
-        addToast('Cadastro salvo com sucesso!', 'success')
+        await db.saveCadastro({
+          ...formData,
+          id: currentRequestId || uuidv4(),
+          operationId: currentRequestId || undefined,
+          renewedFromId: renewingFromId || undefined,
+        })
+        addToast(renewingFromId ? 'Contrato renovado com sucesso!' : 'Cadastro salvo com sucesso!', 'success')
       }
       await refreshData()
       setView('list')
     } catch (error: any) {
-      const isTimeout = error?.message?.includes('TIMEOUT') || error?.name === 'AbortError';
-      const isNotFound = error?.message?.includes('ENDPOINT_NOT_FOUND');
+      const isTimeout = error?.code === 'TIMEOUT' || error?.name === 'AbortError';
+      const isNotFound = error?.code === 'ENDPOINT_NOT_FOUND';
 
       if (isNotFound) {
         addToast('O serviço de dados não foi encontrado (404). Verifique a implantação do Google Apps Script.', 'error');
@@ -480,7 +500,7 @@ export default function Cadastros() {
                           <button
                             onClick={() => confirmDelete(cad.id)}
                             className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-red-100 hover:text-red-700"
-                            title="Excluir"
+                            title="Arquivar"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -494,12 +514,13 @@ export default function Cadastros() {
           </div>
           <ConfirmModal
             isOpen={deleteModalOpen}
-            title="Excluir Cadastro"
-            message="Tem certeza que deseja excluir este cadastro? Esta ação não pode ser desfeita."
+            title="Arquivar cadastro"
+            message="O cadastro sairá das listas ativas, mas cobranças e histórico serão preservados. Deseja continuar?"
             onConfirm={handleDelete}
             onCancel={() => {
               setDeleteModalOpen(false)
               setCadastroToDelete(null)
+              setDeleteOperationId(null)
             }}
           />
         </div>
@@ -512,7 +533,7 @@ export default function Cadastros() {
       <div className="flex items-center justify-between gap-4 border-b border-border bg-muted/50 px-6 py-5">
         <div>
           <h2 className="text-lg font-bold text-brand-navy text-balance">
-            {editingId ? 'Editar Contrato' : 'Novo Contrato de Locação'}
+            {editingId ? 'Editar Contrato' : renewingFromId ? 'Renovar Contrato de Locação' : 'Novo Contrato de Locação'}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Preencha os dados do contrato, proprietário e inquilino.

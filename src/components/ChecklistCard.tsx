@@ -39,6 +39,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const pendingExternalRef = React.useRef<ExtendedChecklist | null>(null);
+  const hasIntegrityError = Boolean(initialChecklist.integrityError || checklist.integrityError);
 
   const persistPromiseRef = React.useRef<Promise<void>>(Promise.resolve());
   const persistQueueState = useCallback(async () => {
@@ -70,6 +71,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   };
 
   useEffect(() => {
+    if (hasIntegrityError) return;
     localforage.getItem(`checklist-queue-${initialChecklist.id}`).then((savedQueue: any) => {
       if (savedQueue?.inFlight) inFlightRef.current = savedQueue.inFlight;
       if (savedQueue?.queued) queuedRef.current = savedQueue.queued;
@@ -77,7 +79,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
          processQueue();
       }
     }).catch(console.error);
-  }, []); // Run once on mount
+  }, [hasIntegrityError, initialChecklist.id]);
 
   // Sincronização externa - Guarda a atualização se a interface estiver ocupada
   useEffect(() => {
@@ -105,6 +107,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
   }, [checklist, saveStatus, initialChecklist]);
 
   const processQueue = useCallback(async () => {
+    if (hasIntegrityError) return;
     if (isSavingRef.current) return;
     if (!inFlightRef.current && !queuedRef.current) return;
     
@@ -189,10 +192,11 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
           setTimeout(processQueue, inFlightRef.current ? 5000 : 1000);
       }
     }
-  }, [addToast, onUpdate]);
+  }, [addToast, hasIntegrityError, onUpdate]);
 
   // Enfileiramento de mudanças locais
   useEffect(() => {
+    if (hasIntegrityError) return;
     const isDirty = JSON.stringify(checklist) !== JSON.stringify(lastSavedState.current);
     if (!isDirty) return;
 
@@ -209,7 +213,7 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
         if (saveStatusRef.current !== 'conflict') processQueue();
     }, 1500);
     return () => clearTimeout(debounceTimer);
-  }, [checklist, processQueue]);
+  }, [checklist, hasIntegrityError, processQueue]);
 
   const handleRetry = () => {
     setSaveStatus('unsaved');
@@ -479,6 +483,21 @@ export function ChecklistCard({ initialChecklist, cadastro, onlyPending, onUpdat
               </button>
             </div>
           )}
+        </div>
+      </div>
+    )
+  }
+
+  if (hasIntegrityError) {
+    return (
+      <div className="border-b border-red-200 bg-red-50 p-6 last:border-0">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          <div>
+            <p className="font-semibold text-red-800">Checklist {checklist.contrato}: dados protegidos</p>
+            <p className="mt-1 text-sm text-red-700">{initialChecklist.integrityError || checklist.integrityError}</p>
+            <p className="mt-2 text-xs text-red-600">Nenhuma alteração será enviada enquanto a inconsistência existir.</p>
+          </div>
         </div>
       </div>
     )

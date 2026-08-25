@@ -16,7 +16,7 @@ const allNavItems = [
   { id: 'renovacoes', label: 'Renovações (60d)', icon: Calendar, interfaceId: 3 },
   { id: 'documentos', label: 'Checklist Docs', icon: FileCheck, interfaceId: 4 },
   { id: 'boletos', label: 'Financeiro / Boletos', icon: FileText, interfaceId: 5 },
-  { id: 'promocoes', label: 'Promoções', icon: Tag, interfaceId: 0 },
+  { id: 'promocoes', label: 'Promoções', icon: Tag, interfaceId: 6 },
 ];
 
 const pageTitles: Record<string, string> = {

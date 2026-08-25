@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import { fileURLToPath, URL } from 'node:url';
 import {defineConfig} from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -10,8 +10,8 @@ export default defineConfig(() => {
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+        // Atualizações não recarregam uma tela com alterações pendentes sem aviso.
+        registerType: 'prompt',
         manifest: {
           name: 'IMG Imóveis',
           short_name: 'IMG',
@@ -37,7 +37,7 @@ export default defineConfig(() => {
     ],
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, '.'),
+        '@': fileURLToPath(new URL('.', import.meta.url)),
       },
     },
     server: {

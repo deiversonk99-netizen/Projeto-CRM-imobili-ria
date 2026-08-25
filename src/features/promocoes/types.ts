@@ -38,6 +38,7 @@ export interface FiltrosPromocao {
   finalidades: string[];
   condominios: string[];
   status: string;
+  selectedContactKeys?: string[];
 }
 
 export type CampanhaStatus = 'RASCUNHO' | 'INICIADA' | 'CONCLUIDA' | 'CANCELADA' | 'ARQUIVADA';
@@ -57,6 +58,8 @@ export interface Campanha {
   updatedAt: string;
   version: number;
   operationId: string;
+  ativa: boolean;
+  desativadaEm: string | null;
 }
 
 export type DestinatarioStatus = 'PENDENTE' | 'WHATSAPP_ABERTO' | 'ENVIO_CONFIRMADO' | 'IGNORADO' | 'ERRO';

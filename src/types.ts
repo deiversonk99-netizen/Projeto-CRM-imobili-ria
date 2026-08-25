@@ -21,6 +21,10 @@ export interface Cadastro {
   status?: 'Ativo' | 'Encerrado' | 'Renovado';
   finalidade?: string;
   condominio?: string;
+  version?: number;
+  operationId?: string;
+  deletedAt?: string;
+  renewedFromId?: string;
 }
 
 export interface DocumentoExtra {
@@ -54,6 +58,7 @@ export interface TarefaConcluida {
   dataConclusao: string;
   usuario: string;
   referencia: string; // e.g., '2023' for birthdays, '2023-10' for boletos, or cobrancaId
+  operationId?: string;
 }
 
 export interface Condominio {

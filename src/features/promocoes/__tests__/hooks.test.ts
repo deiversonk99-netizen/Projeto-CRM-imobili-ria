@@ -11,6 +11,9 @@ vi.mock('../../../store', () => ({
   db: {
     getCampanhas: vi.fn(),
     saveCampanha: vi.fn(),
+    updateCampanha: vi.fn(),
+    arquivarCampanha: vi.fn(),
+    setCampanhaAtiva: vi.fn(),
     iniciarCampanha: vi.fn(),
     getCampanhaDestinatarios: vi.fn(),
     updateCampanhaDestinatario: vi.fn(),
@@ -24,6 +27,7 @@ vi.mock('../../../context/AuthContext', () => ({
 describe('useCampanhas hook', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    localStorage.clear();
     (useAuth as any).mockReturnValue({ user: { nome: 'Tester' } });
   });
 
@@ -63,6 +67,7 @@ describe('useCampanhas hook', () => {
 describe('useCampanhaDestinatarios hook', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    localStorage.clear();
   });
 
   it('confirmacao repetida deve atualizar estado do hook corretamente', async () => {
@@ -88,6 +93,7 @@ describe('useCampanhaDestinatarios hook', () => {
 describe('useCampanhas hook - retomada', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    localStorage.clear();
     (useAuth as any).mockReturnValue({ user: { nome: 'Tester' } });
   });
 
@@ -124,5 +130,26 @@ describe('useCampanhas hook - retomada', () => {
     
     // Deve ter processado sem falhas
     expect(db.iniciarCampanha).toHaveBeenCalledTimes(2);
+  });
+
+  it('preserva a mesma operação ao retentar ativação após falha de rede', async () => {
+    const campaign = {
+      id: 'c-active', nome: 'Campanha', descricao: '', mensagemTemplate: 'Olá', filtrosJson: '{}',
+      status: 'INICIADA', version: 3, ativa: true, desativadaEm: null,
+    } as any;
+    (db.setCampanhaAtiva as any)
+      .mockRejectedValueOnce(new Error('TIMEOUT'))
+      .mockResolvedValueOnce({ version: 4, ativa: false });
+    const { result } = renderHook(() => useCampanhas());
+
+    await expect(result.current.setCampanhaAtiva(campaign, false)).rejects.toThrow('TIMEOUT');
+    await act(async () => {
+      await result.current.setCampanhaAtiva(campaign, false);
+    });
+
+    const firstPayload = (db.setCampanhaAtiva as any).mock.calls[0][0];
+    const retryPayload = (db.setCampanhaAtiva as any).mock.calls[1][0];
+    expect(retryPayload.operationId).toBe(firstPayload.operationId);
+    expect(retryPayload).toEqual(firstPayload);
   });
 });

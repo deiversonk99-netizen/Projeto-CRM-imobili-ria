@@ -1,51 +1,81 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Usuario } from '../types';
-import { db } from '../store';
+import localforage from 'localforage';
+import { clearAuthToken, db, setAuthToken } from '../store';
 
 interface AuthContextData {
   user: Usuario | null;
-  login: (login: string, senha?: string) => Promise<boolean>;
+  login: (login: string, senha: string) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
 }
 
 const AuthContext = createContext<AuthContextData>({} as AuthContextData);
 
+function clearLocalSession() {
+  localStorage.removeItem('@app:user');
+  clearAuthToken();
+  Object.keys(localStorage)
+    .filter(key => key.startsWith('@campaign:') || key.startsWith('@cobranca:operation:'))
+    .forEach(key => localStorage.removeItem(key));
+  void localforage.clear();
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Usuario | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('@app:user');
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        // Garante que usuários cacheados tenham o mesmo nível de acesso do bypass
-        if (!parsed.interfaces?.includes(99)) {
-          parsed.interfaces = [1, 2, 3, 4, 5, 99];
+    let active = true;
+    const restoreSession = async () => {
+      const storedUser = localStorage.getItem('@app:user');
+      const storedToken = localStorage.getItem('@app:auth-token');
+      if (storedUser && storedToken) {
+        try {
+          if (active) setUser(JSON.parse(storedUser) as Usuario);
+          if (active) setLoading(false);
+          return;
+        } catch (e) {
+          console.error(e);
+          localStorage.removeItem('@app:user');
+          clearAuthToken();
         }
-        setUser(parsed);
-      } catch (e) {
-        console.error(e);
       }
-    } else {
-      // Bypass login for now by providing a mock admin user
-      setUser({ id: "0", nome: "Admin (Bypass)", email: "admin@example.com", login: "admin", interfaces: [1, 2, 3, 4, 5, 99] });
-    }
-    setLoading(false);
+
+      try {
+        const response = await db.legacyLogin();
+        if (!active || !response.transitionMode) return;
+        setAuthToken(response.token);
+        setUser(response.user);
+        localStorage.setItem('@app:user', JSON.stringify(response.user));
+      } catch (e) {
+        // A autenticação já está configurada: a tela de login será exibida.
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void restoreSession();
+    return () => { active = false; };
   }, []);
 
-  const login = async (loginId: string, senha?: string) => {
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      clearLocalSession();
+    };
+    window.addEventListener('app:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('app:unauthorized', handleUnauthorized);
+  }, []);
+
+  const login = async (loginId: string, senha: string) => {
     setLoading(true);
     try {
-      const users = await db.getUsuarios();
-      const foundUser = users.find(u => u.login.toLowerCase() === loginId.toLowerCase() && (!senha || u.senha === senha));
-      if (foundUser) {
-        setUser(foundUser);
-        localStorage.setItem('@app:user', JSON.stringify(foundUser));
-        return true;
-      }
-      return false;
+      const response = await db.login(loginId, senha);
+      setAuthToken(response.token);
+      setUser(response.user);
+      localStorage.setItem('@app:user', JSON.stringify(response.user));
+      return true;
     } catch (e) {
       console.error(e);
       return false;
@@ -56,7 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('@app:user');
+    clearLocalSession();
   };
 
   return (

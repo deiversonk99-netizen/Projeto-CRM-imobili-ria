@@ -1,11 +1,64 @@
-import { useState, useCallback } from 'react';
-import { Campanha, CampanhaDestinatario, DestinatarioStatus } from '../types';
-import { useAuth } from '../../../context/AuthContext';
+import { useCallback, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../../store';
+import type { Campanha, CampanhaDestinatario, DestinatarioStatus } from '../types';
+
+interface PersistedJob<T> {
+  operationId: string;
+  payload: T;
+  createdAt: string;
+}
+
+function getOrCreateJob<T>(key: string, createPayload: () => T): PersistedJob<T> {
+  const stored = localStorage.getItem(key);
+  if (stored) {
+    try { return JSON.parse(stored) as PersistedJob<T>; } catch { localStorage.removeItem(key); }
+  }
+  const job = { operationId: uuidv4(), payload: createPayload(), createdAt: new Date().toISOString() };
+  localStorage.setItem(key, JSON.stringify(job));
+  return job;
+}
+
+function completeJob(key: string) {
+  localStorage.removeItem(key);
+}
+
+const FINAL_OPERATION_ERRORS = new Set([
+  'CAMPAIGN_CONFLICT', 'DESTINATARIO_CONFLICT', 'IDEMPOTENCY_KEY_REUSED',
+  'INVALID_TARGET', 'INVALID_STATUS', 'INVALID_STATUS_TRANSITION',
+  'VALIDATION_ERROR', 'DUPLICATE_RECIPIENT', 'NOT_FOUND',
+]);
+
+async function executePersistedJob<T>(key: string, request: Promise<T>): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    const code = (error as { code?: string })?.code;
+    if (code && FINAL_OPERATION_ERRORS.has(code)) completeJob(key);
+    throw error;
+  }
+}
+
+function campaignError(error: unknown): unknown {
+  const typed = error as { code?: string; currentVersion?: number; serverData?: unknown };
+  if (typed?.code !== 'CAMPAIGN_CONFLICT') return error;
+  return Object.assign(new Error('Conflito: A campanha foi modificada. Recarregue os dados antes de continuar.'), {
+    code: typed.code,
+    currentVersion: typed.currentVersion,
+    serverData: typed.serverData,
+  });
+}
+
+function normalizeCampaign(campaign: Campanha): Campanha {
+  return {
+    ...campaign,
+    version: Number(campaign.version) || 1,
+    ativa: campaign.ativa === undefined || campaign.ativa === null || campaign.ativa === true || String(campaign.ativa).toUpperCase() === 'TRUE',
+    desativadaEm: campaign.desativadaEm || null,
+  };
+}
 
 export function useCampanhas() {
-  const { user } = useAuth();
   const [campanhas, setCampanhas] = useState<Campanha[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,103 +68,103 @@ export function useCampanhas() {
     setError(null);
     try {
       const data = await db.getCampanhas();
-      
-      // Filtro de proteção contra duplicidades e erros de ID no react
-      const deduplicated = [];
-      const seen = new Set();
-      const sorted = (data || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      
-      for (const item of sorted) {
-        if (!seen.has(item.id)) {
-          seen.add(item.id);
-          deduplicated.push(item);
-        }
-      }
-      
-      setCampanhas(deduplicated);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao carregar campanhas');
+      setCampanhas((data || []).map(normalizeCampaign).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      ));
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : 'Erro ao carregar campanhas');
     } finally {
       setLoading(false);
     }
   }, []);
 
   const saveCampanha = async (
-    nome: string, 
-    descricao: string, 
-    mensagemTemplate: string, 
-    filtrosJson: string
+    nome: string,
+    descricao: string,
+    mensagemTemplate: string,
+    filtrosJson: string,
   ): Promise<Campanha> => {
-    const payload = {
-      id: uuidv4(),
-      nome,
-      descricao,
-      mensagemTemplate,
-      filtrosJson,
-      createdBy: user?.nome || 'Unknown',
-      operationId: uuidv4(),
-    };
-
-    const data = await db.saveCampanha(payload);
-    
-    const novaCampanha: Campanha = {
+    const fingerprint = [nome.trim(), descricao.trim(), mensagemTemplate.trim(), filtrosJson].join('\u241f');
+    const key = `@campaign:create:${fingerprint}`;
+    const job = getOrCreateJob(key, () => ({
+      id: uuidv4(), nome, descricao, mensagemTemplate, filtrosJson,
+    }));
+    const payload = { ...job.payload, operationId: job.operationId };
+    const data = await executePersistedJob(key, db.saveCampanha(payload));
+    const now = new Date().toISOString();
+    const campaign = normalizeCampaign({
       ...payload,
-      status: 'RASCUNHO',
-      inicioEm: null,
-      fimEm: null,
-      audienciaTotal: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      version: data.version || 1,
-    };
-
-    setCampanhas(prev => [...prev, novaCampanha]);
-    return novaCampanha;
+      status: 'RASCUNHO', inicioEm: null, fimEm: null, audienciaTotal: 0,
+      createdBy: '', createdAt: now, updatedAt: now,
+      version: data.version || 1, ativa: true, desativadaEm: null,
+    });
+    setCampanhas(previous => previous.some(item => item.id === campaign.id) ? previous : [...previous, campaign]);
+    return campaign;
   };
 
-  const iniciarCampanha = async (campanha: Campanha, destinatarios: Partial<CampanhaDestinatario>[]) => {
-    const payload = {
-      id: campanha.id,
-      expectedVersion: campanha.version,
-      operationId: uuidv4(),
-      destinatarios: destinatarios.map(d => ({ ...d, id: uuidv4() })),
-    };
+  const completeCreation = (campaign: Campanha) => {
+    const fingerprint = [campaign.nome, campaign.descricao, campaign.mensagemTemplate, campaign.filtrosJson]
+      .map(value => String(value || '').trim())
+      .join('\u241f');
+    completeJob(`@campaign:create:${fingerprint}`);
+  };
 
+  const iniciarCampanha = async (campaign: Campanha, recipients: Partial<CampanhaDestinatario>[]) => {
+    const key = `@campaign:start:${campaign.id}`;
+    const job = getOrCreateJob(key, () => ({
+      id: campaign.id,
+      expectedVersion: campaign.version,
+      destinatarios: recipients.map(recipient => ({ ...recipient, id: recipient.id || uuidv4() })),
+    }));
     try {
-      const data = await db.iniciarCampanha(payload);
-      setCampanhas(prev => prev.map(c => 
-        c.id === campanha.id 
-          ? { ...c, status: 'INICIADA', version: data.version, updatedAt: new Date().toISOString() } 
-          : c
-      ));
-    } catch (err: any) {
-      if (err.code === 'CAMPAIGN_CONFLICT') {
-        throw new Error('Conflito: A campanha foi modificada.');
-      }
-      throw err;
+      const data = await executePersistedJob(key, db.iniciarCampanha({ ...job.payload, operationId: job.operationId }));
+      setCampanhas(previous => previous.map(item => item.id === campaign.id
+        ? { ...item, status: 'INICIADA', version: data.version || item.version, updatedAt: new Date().toISOString() }
+        : item));
+      completeJob(key);
+      completeCreation(campaign);
+      return data;
+    } catch (requestError) {
+      throw campaignError(requestError);
     }
   };
 
-  // Funções ajustadas para deletar e editar de verdade
-  const deleteCampanha = async (id: string) => {
-    await db.deleteCampanha(id);
-    setCampanhas(prev => prev.filter(c => c.id !== id));
+  const updateCampanha = async (campaign: Campanha, changes: Partial<Campanha>) => {
+    const key = `@campaign:update:${campaign.id}:${campaign.version}`;
+    const job = getOrCreateJob(key, () => ({ id: campaign.id, expectedVersion: campaign.version, ...changes }));
+    const data = await executePersistedJob(key, db.updateCampanha({ ...job.payload, operationId: job.operationId }))
+      .catch(error => { throw campaignError(error); });
+    setCampanhas(previous => previous.map(item => item.id === campaign.id
+      ? { ...item, ...changes, version: data.version || item.version, updatedAt: new Date().toISOString() }
+      : item));
+    completeJob(key);
   };
 
-  const updateCampanha = async (id: string, payload: Partial<Campanha>) => {
-    await db.updateCampanha({ id, ...payload });
-    setCampanhas(prev => prev.map(c => c.id === id ? { ...c, ...payload, updatedAt: new Date().toISOString() } : c));
+  const arquivarCampanha = async (campaign: Campanha) => {
+    const key = `@campaign:archive:${campaign.id}:${campaign.version}`;
+    const job = getOrCreateJob(key, () => ({ id: campaign.id, expectedVersion: campaign.version }));
+    const data = await executePersistedJob(key, db.arquivarCampanha({ ...job.payload, operationId: job.operationId }))
+      .catch(error => { throw campaignError(error); });
+    setCampanhas(previous => previous.map(item => item.id === campaign.id
+      ? { ...item, status: 'ARQUIVADA', ativa: false, desativadaEm: new Date().toISOString(), version: data.version || item.version }
+      : item));
+    completeJob(key);
+  };
+
+  const setCampanhaAtiva = async (campaign: Campanha, ativa: boolean) => {
+    const key = `@campaign:active:${campaign.id}:${campaign.version}:${ativa}`;
+    const job = getOrCreateJob(key, () => ({ id: campaign.id, expectedVersion: campaign.version, ativa }));
+    const data = await executePersistedJob(key, db.setCampanhaAtiva({ ...job.payload, operationId: job.operationId }))
+      .catch(error => { throw campaignError(error); });
+    setCampanhas(previous => previous.map(item => item.id === campaign.id
+      ? { ...item, ativa, desativadaEm: ativa ? null : new Date().toISOString(), version: data.version || item.version }
+      : item));
+    completeJob(key);
   };
 
   return {
-    campanhas,
-    loading,
-    error,
-    fetchCampanhas,
-    saveCampanha,
-    iniciarCampanha,
-    deleteCampanha,
-    updateCampanha
+    campanhas, loading, error, fetchCampanhas, saveCampanha, iniciarCampanha,
+    updateCampanha, arquivarCampanha, setCampanhaAtiva,
   };
 }
 
@@ -126,40 +179,28 @@ export function useCampanhaDestinatarios(campanhaId: string | null) {
     setError(null);
     try {
       const data = await db.getCampanhaDestinatarios(campanhaId);
-      setDestinatarios(data || []);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao carregar destinatários');
+      setDestinatarios((data || []).map(item => ({ ...item, version: Number(item.version) || 1 })));
+    } catch (requestError: unknown) {
+      setError(requestError instanceof Error ? requestError.message : 'Erro ao carregar destinatários');
     } finally {
       setLoading(false);
     }
   }, [campanhaId]);
 
   const updateStatus = async (
-    destinatarioId: string, 
-    expectedVersion: number, 
-    status: DestinatarioStatus, 
-    extra: Partial<CampanhaDestinatario> = {}
+    destinatarioId: string,
+    expectedVersion: number,
+    status: DestinatarioStatus,
+    extra: Partial<CampanhaDestinatario> = {},
   ) => {
-    const payload = {
-      id: destinatarioId,
-      expectedVersion,
-      operationId: uuidv4(),
-      status,
-      ...extra
-    };
-    const data = await db.updateCampanhaDestinatario(payload);
-    setDestinatarios(prev => prev.map(d => 
-      d.id === destinatarioId 
-        ? { ...d, status, ...extra, version: data.version } 
-        : d
-    ));
+    const key = `@campaign:recipient:${destinatarioId}:${expectedVersion}:${status}`;
+    const job = getOrCreateJob(key, () => ({ id: destinatarioId, expectedVersion, status, ...extra }));
+    const data = await executePersistedJob(key, db.updateCampanhaDestinatario({ ...job.payload, operationId: job.operationId }));
+    setDestinatarios(previous => previous.map(item => item.id === destinatarioId
+      ? { ...item, status, ...extra, version: data.version || item.version }
+      : item));
+    completeJob(key);
   };
 
-  return {
-    destinatarios,
-    loading,
-    error,
-    fetchDestinatarios,
-    updateStatus
-  };
+  return { destinatarios, loading, error, fetchDestinatarios, updateStatus };
 }

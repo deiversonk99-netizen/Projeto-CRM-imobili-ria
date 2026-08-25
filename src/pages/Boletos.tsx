@@ -20,6 +20,21 @@ export default function Boletos() {
 
   const { addToast } = useToast()
 
+  const getOperationId = (key: string) => {
+    if (operationIds.current[key]) return operationIds.current[key];
+    const storageKey = `@cobranca:operation:${key}`;
+    const persisted = localStorage.getItem(storageKey);
+    const operationId = persisted || uuidv4();
+    operationIds.current[key] = operationId;
+    localStorage.setItem(storageKey, operationId);
+    return operationId;
+  };
+
+  const completeOperation = (key: string) => {
+    delete operationIds.current[key];
+    localStorage.removeItem(`@cobranca:operation:${key}`);
+  };
+
   // Sincroniza as cobranças no carregamento inicial da página
   useEffect(() => {
     let mounted = true;
@@ -43,24 +58,22 @@ export default function Boletos() {
   const toggleEnvioAction = async (cobranca: Cobranca, action: 'marcar' | 'desfazer') => {
     setProcessingId(cobranca.id)
     const opKey = `${cobranca.id}-envio`;
-    if (!operationIds.current[opKey]) {
-      operationIds.current[opKey] = uuidv4();
-    }
+    const operationId = getOperationId(opKey);
     
     try {
       const updatedData = {
         ...cobranca,
         envioConfirmadoEm: action === 'marcar' ? new Date().toISOString() : '',
-        envioOperationId: operationIds.current[opKey]
+        envioOperationId: operationId
       };
       
       await db.upsertCobranca(updatedData);
       await refreshData();
-      delete operationIds.current[opKey]; // Clear on success
+      completeOperation(opKey);
       addToast(`Aviso de boleto ${action === 'marcar' ? 'marcado como feito' : 'desfeito'}!`, 'success')
     } catch (err) {
       console.error(err);
-      addToast('Erro ao atualizar status do boleto.', 'error')
+      addToast(`Erro ao atualizar status do boleto: ${err instanceof Error ? err.message : 'falha desconhecida'}`, 'error')
     } finally {
       setProcessingId(null)
     }
@@ -69,24 +82,22 @@ export default function Boletos() {
   const markCobrancaPago = async (cobranca: Cobranca) => {
     setProcessingId(cobranca.id)
     const opKey = `${cobranca.id}-pagamento`;
-    if (!operationIds.current[opKey]) {
-      operationIds.current[opKey] = uuidv4();
-    }
+    const operationId = getOperationId(opKey);
     
     try {
       const updatedData = {
         ...cobranca,
         statusPagamento: 'Pago' as any,
         pagoEm: new Date().toISOString(),
-        pagamentoOperationId: operationIds.current[opKey]
+        pagamentoOperationId: operationId
       };
       await db.upsertCobranca(updatedData);
       await refreshData();
-      delete operationIds.current[opKey]; // Clear on success
+      completeOperation(opKey);
       addToast('Boleto baixado e marcado como pago!', 'success')
     } catch (err) {
       console.error(err);
-      addToast('Erro ao baixar boleto.', 'error')
+      addToast(`Erro ao baixar boleto: ${err instanceof Error ? err.message : 'falha desconhecida'}`, 'error')
     } finally {
       setProcessingId(null)
     }
@@ -96,15 +107,7 @@ export default function Boletos() {
   const term = searchTerm.toLowerCase()
   
   // 1. Envios: Cobranças pendentes do mês atual com vencimento próximo
-  // Garantir que não haja boletos duplicados na renderização (mesmo contrato e vencimento)
-  const uniqueCobrancas = Array.from(
-    new Map(
-      cobrancas.map(c => [`${String(c.contrato).trim()}-${String(c.vencimento).trim()}`, c])
-    ).values()
-  );
-
-  // 1. Envios: Cobranças pendentes do mês atual com vencimento próximo
-  const enviosCobrancas = uniqueCobrancas.filter(c => {
+  const enviosCobrancas = cobrancas.filter(c => {
     if (c.statusPagamento !== 'Pendente') return false;
     
     const aviso = checkCobrancaWarning(c.vencimento);
@@ -126,7 +129,6 @@ export default function Boletos() {
 
   const currentEnviosList = envioTab === 'pendentes' ? enviosPendentes : enviosConcluidos
   const totalEnvios = enviosCobrancas.length
-  console.log("enviosCobrancas", enviosCobrancas.length, enviosCobrancas.map(c => c.contrato + "-" + c.competencia + "-" + c.vencimento + "-" + c.id));
   const progressPercent = totalEnvios === 0 ? 0 : Math.round((enviosConcluidos.length / totalEnvios) * 100)
 
   // Separar em categorias de aviso (2_dias, 1_dia, hoje)
@@ -135,7 +137,7 @@ export default function Boletos() {
   const doisDias = currentEnviosList.filter(c => checkCobrancaWarning(c.vencimento) === '2_dias')
 
   // 2. Pendências: Cobranças pendentes e atrasadas
-  const pendingCobrancas = uniqueCobrancas.filter(c => {
+  const pendingCobrancas = cobrancas.filter(c => {
     if (c.statusPagamento !== 'Pendente') return false;
     
     // Check if it is atrasado
@@ -165,6 +167,7 @@ export default function Boletos() {
             const isProcessing = processingId === cobranca.id
             const cadastro = cadastros.find(cad => cad.id === cobranca.cadastroId)
             const text = `Olá ${cadastro?.nomeInq || ''}, tudo bem? Segue o aviso de vencimento do seu boleto referente ao Contrato ${cobranca.contrato}.`
+            const whatsappLink = getWhatsappLink(cadastro?.telInq, text)
 
             return (
               <li
@@ -192,15 +195,15 @@ export default function Boletos() {
                 </div>
 
                 <div className="mt-4 flex items-center gap-2">
-                  <a
-                    href={getWhatsappLink(cadastro?.telInq, text)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-2 text-xs font-semibold text-white transition-all hover:brightness-105"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    Avisar
-                  </a>
+                  {whatsappLink ? (
+                    <a href={whatsappLink} target="_blank" rel="noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#25D366] px-3 py-2 text-xs font-semibold text-white transition-all hover:brightness-105">
+                      <MessageCircle className="h-4 w-4" /> Avisar
+                    </a>
+                  ) : (
+                    <span className="flex flex-1 items-center justify-center rounded-lg bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground" title="Corrija o telefone no cadastro">
+                      Telefone inválido
+                    </span>
+                  )}
                   
                   {cobranca.envioConfirmadoEm ? (
                     <button
@@ -351,6 +354,7 @@ export default function Boletos() {
                   const isProcessing = processingId === cobranca.id;
                   
                   const text = `Olá ${cadastro?.nomeInq || ''}, tudo bem? Consta em nosso sistema que o boleto referente ao aluguel (Contrato ${cobranca.contrato}) com vencimento no dia ${format(parseISO(cobranca.vencimento), 'dd/MM/yyyy')} consta como em aberto. Por favor, desconsidere esta mensagem caso o pagamento já tenha sido realizado.`;
+                  const whatsappLink = getWhatsappLink(cadastro?.telInq, text);
 
                   return (
                     <li
@@ -371,15 +375,13 @@ export default function Boletos() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <a
-                          href={getWhatsappLink(cadastro?.telInq, text)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1.5 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105"
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                          Cobrar
-                        </a>
+                        {whatsappLink ? (
+                          <a href={whatsappLink} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 rounded-xl bg-[#25D366] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-105">
+                            <MessageCircle className="h-4 w-4" /> Cobrar
+                          </a>
+                        ) : (
+                          <span className="rounded-xl bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground" title="Corrija o telefone no cadastro">Telefone inválido</span>
+                        )}
                         <button
                           onClick={() => markCobrancaPago(cobranca)}
                           disabled={isProcessing}

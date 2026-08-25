@@ -1,6 +1,7 @@
+import { buildWhatsAppLink } from './whatsapp';
+
 export function generateWhatsAppLink(phone: string, text: string): string {
-  const cleanPhone = String(phone || '').replace(/\D/g, '');
-  return `https://wa.me/55${cleanPhone}?text=${encodeURIComponent(text)}`;
+  return buildWhatsAppLink(phone, text);
 }
 
 export function generateEmailLink(email: string, subject: string, body: string): string {

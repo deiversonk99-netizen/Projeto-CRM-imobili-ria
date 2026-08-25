@@ -1,162 +1,173 @@
-import { Cadastro, ChecklistDocs, TarefaConcluida, Usuario } from './types';
+import type { Campanha, CampanhaDestinatario } from './features/promocoes/types';
+import type { Cadastro, ChecklistDocs, Condominio, Cobranca, TarefaConcluida, Usuario } from './types';
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzL4JN0w6Kh_TM_V9A4V4YrgmfFMw-E8grL8ik6-HVsXeAKYc1JgqEQGCrNGUbYO0ou_g/exec';
+export const GAS_URL = String(import.meta.env.VITE_GAS_URL || '').trim();
+const AUTH_TOKEN_KEY = '@app:auth-token';
 
-export async function fetchGAS(payload: any, customTimeout = 60000) {
+type JsonRecord = Record<string, unknown>;
+
+export class ApiError extends Error {
+  code?: string;
+  serverData?: JsonRecord;
+  currentVersion?: number;
+
+  constructor(message: string, options: { code?: string; serverData?: JsonRecord; currentVersion?: number } = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = options.code;
+    this.serverData = options.serverData;
+    this.currentVersion = options.currentVersion;
+  }
+}
+
+let authToken = typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) || '' : '';
+
+export function setAuthToken(token: string) {
+  authToken = token;
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+export function clearAuthToken() {
+  authToken = '';
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === 'object' ? value as JsonRecord : {};
+}
+
+export async function fetchGAS<T = unknown>(payload: JsonRecord, customTimeout = 60000): Promise<T> {
+  if (!GAS_URL || !/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(GAS_URL)) {
+    throw new ApiError('VITE_GAS_URL não está configurada com uma URL /exec válida.', { code: 'CONFIG_ERROR' });
+  }
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), customTimeout);
-  
+  const timeoutId = window.setTimeout(() => controller.abort(), customTimeout);
+  const requestPayload = payload.action === 'login' || payload.action === 'health'
+    ? payload
+    : { ...payload, authToken };
+
   try {
     const response = await fetch(GAS_URL, {
       method: 'POST',
       credentials: 'omit',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(requestPayload),
+      signal: controller.signal,
     });
-    
-    if (response.status === 404) {
-      if (response.url && response.url.includes('script.googleusercontent.com')) {
-        throw new Error('REDIRECT_FAILED: O Google Apps Script tentou redirecionar a resposta, mas a URL expirou ou falhou. É possível que os dados tenham sido salvos.');
-      } else {
-        throw new Error('ENDPOINT_NOT_FOUND: a implantação do Google Apps Script não foi encontrada.');
-      }
-    }
 
-    if (!response.ok) {
-      throw new Error(`HTTP_${response.status}`);
+    if (response.status === 404) {
+      const code = response.url.includes('script.googleusercontent.com') ? 'REDIRECT_FAILED' : 'ENDPOINT_NOT_FOUND';
+      throw new ApiError(
+        code === 'REDIRECT_FAILED'
+          ? 'O redirecionamento do Google falhou. A operação ainda pode ter sido processada.'
+          : 'A implantação do Google Apps Script não foi encontrada.',
+        { code },
+      );
     }
-    
+    if (!response.ok) throw new ApiError(`Falha HTTP ${response.status}.`, { code: `HTTP_${response.status}` });
+
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-      throw new Error('INVALID_RESPONSE: o servidor não retornou JSON.');
+      throw new ApiError('O servidor não retornou uma resposta JSON.', { code: 'INVALID_RESPONSE' });
     }
 
-    const data = await response.json();
-
-    if (data.error) {
-      const err: any = new Error(data.error);
-      if (data.code) err.code = data.code;
-      err.serverData = data;
-      err.currentVersion = data.currentVersion || data.version;
-      throw err;
+    const data: unknown = await response.json();
+    const record = asRecord(data);
+    if (record.error) {
+      const currentVersion = Number(record.currentVersion ?? record.version);
+      const error = new ApiError(String(record.error), {
+        code: record.code ? String(record.code) : undefined,
+        serverData: record,
+        currentVersion: Number.isFinite(currentVersion) ? currentVersion : undefined,
+      });
+      if (error.code === 'UNAUTHORIZED') window.dispatchEvent(new Event('app:unauthorized'));
+      throw error;
     }
-
-    return data;
-  } catch (error: any) {
-    if (error.name === 'AbortError') {
-      throw new Error('TIMEOUT: A operação demorou muito para responder (timeout). O servidor ainda pode estar processando a sua requisição.');
+    return data as T;
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError(
+        'A operação excedeu o tempo limite. O servidor ainda pode estar processando a solicitação.',
+        { code: 'TIMEOUT' },
+      );
     }
     throw error;
   } finally {
-    clearTimeout(timeoutId);
+    window.clearTimeout(timeoutId);
   }
 }
 
-export async function fetchGET(action: string) {
-  const response = await fetch(`${GAS_URL}?action=${action}`, { credentials: 'omit' });
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(`[404] Rota "${action}" não encontrada. Verifique se você publicou a NOVA VERSÃO no Apps Script.`);
-    }
-    throw new Error(`Failed to fetch ${action}: ${response.status} ${response.statusText}`);
-  }
-  const data = await response.json();
-  if (data.error) throw new Error(data.error);
-  return data;
+export function fetchGET<T>(action: string, params: JsonRecord = {}): Promise<T> {
+  return fetchGAS<T>({ action, ...params });
+}
+
+interface LoginResponse {
+  success: true;
+  token: string;
+  expiresIn: number;
+  user: Usuario;
+  transitionMode?: boolean;
+}
+
+interface MutationResponse {
+  success: true;
+  status?: string;
+  id?: string;
+  version?: number;
+  ativa?: boolean;
+  dataConclusao?: string;
 }
 
 export const db = {
-  getUsuarios: async (): Promise<Usuario[]> => {
-    try {
-      const users = await fetchGET('getUsuarios');
-      if (users && users.length > 0) return users;
-      return [
-        { id: "1", nome: "João Silva", email: "joao@example.com", login: "joao", senha: "123", interfaces: [1, 3] },
-        { id: "2", nome: "Admin", email: "admin@example.com", login: "admin", senha: "123", interfaces: [1, 2, 3, 4, 5, 99] }
-      ];
-    } catch (e: any) {
-      throw e;
-    }
-  },
-  getCadastros: async (): Promise<Cadastro[]> => {
-    return fetchGET('getCadastros');
-  },
-  
-  saveCadastro: async (cadastro: Omit<Cadastro, 'id' | 'dataHora'> & { id?: string; dataHora?: string }): Promise<void> => {
-    await fetchGAS({ action: 'saveCadastro', data: cadastro });
-  },
-  updateCadastro: async (cadastro: Cadastro & { operationId?: string, expectedVersion?: number }): Promise<void> => {
-    await fetchGAS({ action: 'updateCadastro', data: cadastro });
-  },
-  deleteCadastro: async (id: string): Promise<void> => {
-    await fetchGAS({ action: 'deleteCadastro', id });
-  },
+  login: (login: string, password: string) =>
+    fetchGAS<LoginResponse>({ action: 'login', credentials: { login, password } }),
+  legacyLogin: () =>
+    fetchGAS<LoginResponse>({ action: 'login', credentials: { login: '__legacy__', password: '' } }),
 
-  getChecklists: async (): Promise<ChecklistDocs[]> => {
-    return fetchGET('getChecklists');
-  },
-  updateChecklist: async (checklist: ChecklistDocs & { operationId?: string, version?: number }): Promise<any> => {
-    return await fetchGAS({ action: 'updateChecklist', data: checklist });
-  },
+  getCadastros: () => fetchGET<Cadastro[]>('getCadastros'),
+  saveCadastro: (cadastro: Omit<Cadastro, 'id' | 'dataHora'> & {
+    id?: string;
+    dataHora?: string;
+    operationId?: string;
+    renewedFromId?: string;
+  }) => fetchGAS<MutationResponse>({ action: 'saveCadastro', data: cadastro }),
+  updateCadastro: (cadastro: Cadastro & { operationId?: string; expectedVersion?: number }) =>
+    fetchGAS<MutationResponse>({ action: 'updateCadastro', data: cadastro }),
+  deleteCadastro: (payload: { id: string; operationId: string; expectedVersion: number }) =>
+    fetchGAS<MutationResponse>({ action: 'deleteCadastro', payload }),
 
-  getTarefas: async (): Promise<TarefaConcluida[]> => {
-    return fetchGET('getTarefas');
-  },
+  getChecklists: () => fetchGET<ChecklistDocs[]>('getChecklists'),
+  updateChecklist: (checklist: ChecklistDocs & { operationId?: string; version?: number }) =>
+    fetchGAS<MutationResponse>({ action: 'updateChecklist', data: checklist }),
 
-  getCondominios: async (): Promise<any[]> => {
-    return fetchGET('getCondominios');
-  },
-  getCobrancas: async (): Promise<any[]> => {
-    return fetchGET('getCobrancas');
-  },
-  syncCobrancas: async (): Promise<any> => {
-    return await fetchGAS({ action: 'syncCobrancas' });
-  },
-  upsertCondominio: async (condo: any): Promise<any> => {
-    return await fetchGAS({ action: 'upsertCondominio', data: condo });
-  },
-  upsertCobranca: async (cobranca: any): Promise<any> => {
-    return await fetchGAS({ action: 'upsertCobranca', data: cobranca });
-  },
-
-  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'>): Promise<TarefaConcluida> => {
-    const res = await fetchGAS({ action: 'saveTarefa', data: tarefa });
+  getTarefas: () => fetchGET<TarefaConcluida[]>('getTarefas'),
+  saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'> & { operationId: string }) => {
+    const response = await fetchGAS<MutationResponse>({ action: 'saveTarefa', data: tarefa });
     return {
       ...tarefa,
-      idTarefa: res.id,
-      dataConclusao: new Date().toISOString()
-    };
+      idTarefa: String(response.id),
+      dataConclusao: response.dataConclusao || new Date().toISOString(),
+    } as TarefaConcluida;
   },
-  deleteTarefa: async (idTarefa: string): Promise<void> => {
-    await fetchGAS({ action: 'deleteTarefa', id: idTarefa });
-  },
+  deleteTarefa: (idTarefa: string) => fetchGAS<MutationResponse>({ action: 'deleteTarefa', id: idTarefa }),
 
-  getCampanhas: async (): Promise<any[]> => {
-    return fetchGET('getCampanhas');
-  },
-  saveCampanha: async (payload: any): Promise<any> => {
-    return await fetchGAS({ action: 'saveCampanha', payload });
-  },
-  
-  // === FUNÇÕES NOVAS DE EDITAR/EXCLUIR AQUI ===
-  deleteCampanha: async (id: string): Promise<void> => {
-    await fetchGAS({ action: 'deleteCampanha', id });
-  },
-  updateCampanha: async (payload: any): Promise<any> => {
-    return await fetchGAS({ action: 'updateCampanha', payload });
-  },
-  // ===========================================
+  getCondominios: () => fetchGET<Condominio[]>('getCondominios'),
+  getCobrancas: () => fetchGET<Cobranca[]>('getCobrancas'),
+  syncCobrancas: () => fetchGAS<MutationResponse>({ action: 'syncCobrancas' }),
+  upsertCondominio: (condominio: Condominio) =>
+    fetchGAS<MutationResponse & { data?: Condominio }>({ action: 'upsertCondominio', data: condominio }),
+  upsertCobranca: (cobranca: Cobranca) =>
+    fetchGAS<MutationResponse & { data?: Cobranca }>({ action: 'upsertCobranca', data: cobranca }),
 
-  iniciarCampanha: async (payload: any): Promise<any> => {
-    return await fetchGAS({ action: 'iniciarCampanha', payload }, 120000); 
-  },
-  getCampanhaDestinatarios: async (campanhaId: string): Promise<any[]> => {
-    return fetchGET(`getCampanhaDestinatarios&campanhaId=${campanhaId}`);
-  },
-  updateCampanhaDestinatario: async (payload: any): Promise<any> => {
-    return await fetchGAS({ action: 'updateCampanhaDestinatario', payload });
-  }
+  getCampanhas: () => fetchGET<Campanha[]>('getCampanhas'),
+  saveCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'saveCampanha', payload }),
+  updateCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'updateCampanha', payload }),
+  arquivarCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'arquivarCampanha', payload }),
+  cancelarCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'cancelarCampanha', payload }),
+  setCampanhaAtiva: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'setCampanhaAtiva', payload }),
+  iniciarCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'iniciarCampanha', payload }, 120000),
+  getCampanhaDestinatarios: (campanhaId: string) =>
+    fetchGET<CampanhaDestinatario[]>('getCampanhaDestinatarios', { campanhaId }),
+  updateCampanhaDestinatario: (payload: JsonRecord) =>
+    fetchGAS<MutationResponse>({ action: 'updateCampanhaDestinatario', payload }),
 };

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { db } from '../store';
 import { Cadastro, ChecklistDocs, TarefaConcluida, Condominio, Cobranca } from '../types';
+import { useAuth } from './AuthContext';
 
 interface DataContextProps {
   cadastros: Cadastro[];
@@ -10,7 +11,8 @@ interface DataContextProps {
   cobrancas: Cobranca[];
   loading: boolean;
   error: string | null;
-  refreshData: () => Promise<any>;
+  warnings: string[];
+  refreshData: () => Promise<{ cads: Cadastro[]; checks: ChecklistDocs[]; tars: TarefaConcluida[]; conds: Condominio[]; cobs: Cobranca[] } | undefined>;
   addTarefaLocally: (tarefa: TarefaConcluida) => void;
   removeTarefaLocally: (idTarefa: string) => void;
 }
@@ -25,6 +27,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [cobrancas, setCobrancas] = useState<Cobranca[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const { user } = useAuth();
 
   const addTarefaLocally = (tarefa: TarefaConcluida) => {
     setTarefas((prev) => [...prev, tarefa]);
@@ -35,41 +39,72 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const refreshData = async () => {
+    if (!user) return undefined;
     try {
+      setLoading(true);
       setError(null);
-      const [cads, checks, tars, conds, cobs] = await Promise.all([
+      setWarnings([]);
+      const hasAccess = (interfaceId: number) => user.interfaces.includes(99) || user.interfaces.includes(interfaceId);
+      const results = await Promise.allSettled([
         db.getCadastros(),
-        db.getChecklists(),
-        db.getTarefas(),
-        db.getCondominios(),
-        db.getCobrancas()
+        hasAccess(4) ? db.getChecklists() : Promise.resolve([] as ChecklistDocs[]),
+        hasAccess(2) ? db.getTarefas() : Promise.resolve([] as TarefaConcluida[]),
+        hasAccess(1) || hasAccess(6) ? db.getCondominios() : Promise.resolve([] as Condominio[]),
+        hasAccess(5) ? db.getCobrancas() : Promise.resolve([] as Cobranca[]),
       ]);
+      if (results[0].status === 'rejected') throw results[0].reason;
+      const cads = results[0].value as Cadastro[];
+      const checks = results[1].status === 'fulfilled' ? results[1].value as ChecklistDocs[] : [];
+      const tars = results[2].status === 'fulfilled' ? results[2].value as TarefaConcluida[] : [];
+      const conds = results[3].status === 'fulfilled' ? results[3].value as Condominio[] : [];
+      const cobs = results[4].status === 'fulfilled' ? results[4].value as Cobranca[] : [];
+      const partialWarnings = results.slice(1).flatMap((result, index) =>
+        result.status === 'rejected' ? [`Falha ao carregar ${['checklists', 'tarefas', 'condomínios', 'cobranças'][index]}.`] : [],
+      );
+
+      const chargeKeys = new Set<string>();
+      const duplicateCharges = cobs.filter(cobranca => {
+        const key = `${cobranca.cadastroId}-${cobranca.competencia}`;
+        if (chargeKeys.has(key)) return true;
+        chargeKeys.add(key);
+        return false;
+      });
+      if (duplicateCharges.length > 0) {
+        partialWarnings.push(`Foram encontradas ${duplicateCharges.length} cobranças duplicadas na base. Nenhum registro foi ocultado.`);
+      }
+      setWarnings(partialWarnings);
       setCadastros(cads || []);
       setChecklists(checks || []);
       setTarefas(tars || []);
       setCondominios(conds || []);
-      
-      // Deduplicate cobrancas based on contrato + competencia + vencimento
-      const uniqueCobs = Array.from(
-        new Map(
-          (cobs || []).map(c => [`${c.contrato}-${c.competencia}-${c.vencimento}`, c])
-        ).values()
-      );
-      setCobrancas(uniqueCobs);
+      setCobrancas(cobs || []);
 
       return { cads, checks, tars, conds, cobs };
     } catch (err: any) {
       console.error('Error fetching data', err);
       setError(err.message || 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');
+      return undefined;
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    refreshData().finally(() => setLoading(false));
-  }, []);
+    if (user) void refreshData();
+    else {
+      setCadastros([]);
+      setChecklists([]);
+      setTarefas([]);
+      setCondominios([]);
+      setCobrancas([]);
+      setWarnings([]);
+      setError(null);
+      setLoading(false);
+    }
+  }, [user]);
 
   return (
-    <DataContext.Provider value={{ cadastros, checklists, tarefas, condominios, cobrancas, loading, error, refreshData, addTarefaLocally, removeTarefaLocally }}>
+    <DataContext.Provider value={{ cadastros, checklists, tarefas, condominios, cobrancas, loading, error, warnings, refreshData, addTarefaLocally, removeTarefaLocally }}>
       {children}
     </DataContext.Provider>
   );

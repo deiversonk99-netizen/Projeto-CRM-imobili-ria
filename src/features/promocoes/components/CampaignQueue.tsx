@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Campanha, CampanhaDestinatario, DestinatarioStatus } from '../types';
-import { MessageSquare, CheckCircle, AlertCircle, XCircle, ArrowRight, Loader2, Play } from 'lucide-react';
+import { MessageSquare, CheckCircle, AlertCircle, XCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { criarLinkWhatsApp } from '../domain';
 
 interface Props {
@@ -12,6 +12,13 @@ interface Props {
 
 export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVoltar }: Props) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const parseStringArray = (value: string) => {
+    try {
+      const parsed: unknown = JSON.parse(value || '[]');
+      return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : [];
+    } catch { return []; }
+  };
 
   const getStatusBadge = (status: DestinatarioStatus) => {
     switch(status) {
@@ -26,6 +33,10 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
   const handleAbrirWhatsApp = async (d: CampanhaDestinatario) => {
     try {
       const url = criarLinkWhatsApp(d.telefone, d.mensagemRenderizada);
+      if (!url) {
+        alert('O telefone deste destinatário é inválido.');
+        return;
+      }
       const popup = window.open('', '_blank');
       
       if (!popup) {
@@ -36,7 +47,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
       popup.opener = null;
       popup.location.href = url;
       
-      if (d.status === 'PENDENTE') {
+      if (d.status === 'PENDENTE' || d.status === 'ERRO') {
         setUpdatingId(d.id);
         try {
           await onUpdateStatus(d.id, d.version, 'WHATSAPP_ABERTO', { whatsappAbertoEm: new Date().toISOString() });
@@ -77,8 +88,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
     }
   };
 
-  const pendentes = destinatarios.filter(d => d.status === 'PENDENTE' || d.status === 'WHATSAPP_ABERTO');
-  const concluidos = destinatarios.filter(d => d.status === 'ENVIO_CONFIRMADO' || d.status === 'IGNORADO' || d.status === 'ERRO');
+  const pendentes = destinatarios.filter(d => d.status === 'PENDENTE' || d.status === 'WHATSAPP_ABERTO' || d.status === 'ERRO');
 
   // Encontrar o próximo destinatário lógico (primeiro pendente, ou o primeiro aberto que ainda precisa ser confirmado)
   const proximoId = pendentes[0]?.id;
@@ -91,6 +101,12 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
         </button>
         <h2 className="text-xl font-bold text-foreground">Fila de Envio: {campanha.nome}</h2>
       </div>
+
+      {!campanha.ativa && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900" role="alert">
+          Esta campanha está desativada. Reative-a na lista de campanhas para continuar os envios.
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border p-4 rounded-2xl shadow-sm text-center">
@@ -119,6 +135,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
             destinatarios.map(d => {
               const isNext = d.id === proximoId;
               const isUpdating = updatingId === d.id;
+              const controlsDisabled = !campanha.ativa || updatingId !== null;
 
               return (
                 <div key={d.id} className={`p-5 transition-colors ${isNext ? 'bg-primary/5 border-l-4 border-l-primary' : 'hover:bg-muted/20 border-l-4 border-l-transparent'}`}>
@@ -132,7 +149,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                       
                       <div className="text-sm text-muted-foreground font-medium flex items-center gap-2">
                         {d.telefone}
-                        {d.perfisJson && JSON.parse(d.perfisJson).map((p: string) => (
+                        {parseStringArray(d.perfisJson).map((p: string) => (
                            <span key={p} className="px-1.5 py-0.5 bg-muted rounded text-[10px] uppercase">{p}</span>
                         ))}
                       </div>
@@ -141,7 +158,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                          try {
                            const ctx = JSON.parse(d.contextoJson || '{}');
                            const inqs = ctx.inquilinos || [];
-                           const perfis = d.perfisJson ? JSON.parse(d.perfisJson) : [];
+                           const perfis = parseStringArray(d.perfisJson);
                            if (perfis.includes('Proprietário') && inqs.length > 0) {
                              return (
                                <div className="text-xs text-muted-foreground mt-1">
@@ -159,18 +176,18 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                     </div>
 
                     <div className="shrink-0 flex flex-col gap-2 pt-2 md:pt-0 min-w-[200px]">
-                      {d.status === 'PENDENTE' && (
+                      {(d.status === 'PENDENTE' || d.status === 'ERRO') && (
                         <div className="flex flex-col gap-2">
                           <button 
-                            disabled={isUpdating}
+                            disabled={controlsDisabled}
                             onClick={() => handleAbrirWhatsApp(d)}
                             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#25D366] text-white rounded-xl font-medium hover:bg-[#20bd5a] transition-colors disabled:opacity-50"
                           >
                             {isUpdating ? <Loader2 className="h-4 w-4 animate-spin"/> : <MessageSquare className="h-4 w-4" />}
-                            1. Abrir WhatsApp
+                            {d.status === 'ERRO' ? 'Tentar WhatsApp novamente' : '1. Abrir WhatsApp'}
                           </button>
                           <button 
-                            disabled={isUpdating}
+                            disabled={controlsDisabled}
                             onClick={() => {
                               if (window.confirm("Confirmar envio mesmo assim? Só faça isso se você já enviou a mensagem pelo WhatsApp.")) {
                                 handleConfirmar(d);
@@ -186,7 +203,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                       {d.status === 'WHATSAPP_ABERTO' && (
                         <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
                           <button 
-                            disabled={isUpdating}
+                            disabled={controlsDisabled}
                             onClick={() => handleConfirmar(d)}
                             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors shadow-sm disabled:opacity-50"
                           >
@@ -194,7 +211,7 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                             2. Confirmar Envio
                           </button>
                           <button 
-                            disabled={isUpdating}
+                            disabled={controlsDisabled}
                             onClick={() => handleAbrirWhatsApp(d)}
                             className="w-full text-xs font-medium text-muted-foreground hover:text-foreground underline decoration-dotted"
                           >
@@ -203,9 +220,9 @@ export function CampaignQueue({ campanha, destinatarios, onUpdateStatus, onVolta
                         </div>
                       )}
 
-                      {(d.status === 'PENDENTE' || d.status === 'WHATSAPP_ABERTO') && (
+                      {(d.status === 'PENDENTE' || d.status === 'WHATSAPP_ABERTO' || d.status === 'ERRO') && (
                         <button 
-                          disabled={isUpdating}
+                          disabled={controlsDisabled}
                           onClick={() => handlePular(d)}
                           className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-background border border-border text-muted-foreground rounded-xl font-medium hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50 mt-1"
                         >

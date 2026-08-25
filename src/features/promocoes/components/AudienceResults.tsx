@@ -7,9 +7,13 @@ interface Props {
   contatos: ContatoAgrupado[];
   totalExcluidos: number;
   totalCompartilhados: number;
+  excludedContactKeys: Set<string>;
+  onToggleContact: (contactKey: string) => void;
+  onSelectAll: () => void;
+  onClearSelection: () => void;
 }
 
-export function AudienceResults({ contatos, totalExcluidos, totalCompartilhados }: Props) {
+export function AudienceResults({ contatos, totalExcluidos, totalCompartilhados, excludedContactKeys, onToggleContact, onSelectAll, onClearSelection }: Props) {
   // Simples pagination para não explodir render
   const [page, setPage] = React.useState(1);
   const itemsPerPage = 20;
@@ -51,6 +55,11 @@ export function AudienceResults({ contatos, totalExcluidos, totalCompartilhados 
             </div>
           )}
         </div>
+        <div className="mt-3 flex items-center gap-3 text-xs">
+          <button type="button" onClick={onSelectAll} className="font-semibold text-primary hover:underline">Selecionar todos</button>
+          <button type="button" onClick={onClearSelection} className="font-semibold text-muted-foreground hover:underline">Limpar seleção</button>
+          <span className="ml-auto text-muted-foreground">{contatos.length - excludedContactKeys.size} selecionados</span>
+        </div>
       </div>
 
       <div className="divide-y divide-border overflow-y-auto max-h-[600px]">
@@ -62,6 +71,16 @@ export function AudienceResults({ contatos, totalExcluidos, totalCompartilhados 
           paginated.map(c => (
             <div key={c.contactKey} className="p-4 hover:bg-muted/20 transition-colors">
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={!excludedContactKeys.has(c.contactKey)}
+                    onChange={() => onToggleContact(c.contactKey)}
+                    className="h-4 w-4 accent-primary"
+                    aria-label={`Selecionar ${c.nomes.join(' / ')}`}
+                  />
+                  Enviar
+                </label>
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold text-foreground text-base">

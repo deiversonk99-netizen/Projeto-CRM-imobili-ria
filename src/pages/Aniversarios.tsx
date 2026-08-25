@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { db } from '../store'
 import { checkBirthday, getWhatsappLink } from '../utils/dates'
 import { Gift, MessageCircle, CheckCircle, CalendarDays, Loader2, Search } from 'lucide-react'
@@ -25,6 +26,7 @@ export default function Aniversarios() {
   const [processingId, setProcessingId] = useState<string | null>(null)
   const [tab, setTab] = useState<'pendentes' | 'concluidos'>('pendentes')
   const [searchTerm, setSearchTerm] = useState('')
+  const operationIdsRef = useRef(new Map<string, string>())
   
   const currentYear = new Date().getFullYear().toString()
 
@@ -91,15 +93,20 @@ export default function Aniversarios() {
 
     try {
       if (action === 'marcar') {
+        const operationKey = `${item.id}:${currentYear}`
+        const operationId = operationIdsRef.current.get(operationKey) || uuidv4()
+        operationIdsRef.current.set(operationKey, operationId)
         const novaTarefa = {
           contrato: String(item.contrato),
           tipo: 'Aniversário' as any,
           usuario: item.tipo,
           referencia: currentYear,
+          operationId,
         };
         setAniversariantes(prev => prev.map(a => a.id === item.id ? { ...a, isFeito: true } : a))
         const saved = await db.saveTarefa(novaTarefa)
         addTarefaLocally(saved)
+        operationIdsRef.current.delete(operationKey)
         addToast('Aniversário marcado como feito!', 'success')
       } else {
         const task = tarefas.find(t => t.tipo === 'Aniversário' && String(t.referencia) === currentYear && String(t.contrato) === String(item.contrato) && t.usuario === item.tipo)

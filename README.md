@@ -1,38 +1,79 @@
-# Documentação do Sistema IMG Imóveis
+# CRM IMG Imóveis
 
-Este é o aplicativo interno de gerenciamento para a IMG Imóveis Mogi Guaçu. Ele utiliza uma interface construída em React e Tailwind CSS, e se comunica com o Google Sheets por meio do Google Apps Script.
+Aplicação interna para contratos, aniversários, checklists, cobranças, condomínios e campanhas manuais de WhatsApp. O frontend usa React/Vite; o backend é um Web App do Google Apps Script com Google Sheets.
 
-## Configuração do Google Apps Script
+## Requisitos
 
-A persistência de dados é feita no Google Sheets e as chamadas de backend são controladas por um script no Google Apps Script.
-Para implantar uma nova versão do script ou começar do zero, siga os passos:
+- Node.js 22.22.2
+- npm 11
+- uma planilha Google dedicada ao sistema
+- um projeto Google Apps Script implantado como Web App
 
-1. Acesse o [Google Apps Script](https://script.google.com/).
-2. Crie um novo projeto ou selecione um existente.
-3. Copie o conteúdo do arquivo `apps-script.js` (presente na raiz deste repositório) e cole no editor do Apps Script (normalmente chamado de `Código.gs`).
-4. Altere a string do ID da planilha em `SpreadsheetApp.openById('SUA_PLANILHA_AQUI')` pelo ID real da sua planilha do Google Sheets.
-5. Clique em **Implantar (Deploy) > Nova implantação**.
-6. Selecione o tipo de implantação como **App da Web**.
-7. Defina "Executar como" com a sua conta do Google (para que o script possa acessar a planilha).
-8. Em "Quem tem acesso", escolha **Qualquer pessoa** (ou gerencie os acessos se necessário).
-9. Clique em **Implantar** e copie a URL do Web App (termina em `/exec`).
-10. Substitua o valor da constante `GAS_URL` no arquivo `src/store.ts` pela nova URL do seu Web App.
+## Desenvolvimento local
 
-## Estrutura da Planilha
+```bash
+npm ci
+copy .env.example .env.local
+npm run dev
+```
 
-O Google Sheets deve conter as seguintes abas (caso não existam, o próprio Apps Script pode criá-las ao rodar `setupSpreadsheet()`):
+Preencha `VITE_GAS_URL` em `.env.local` com a URL `/exec` da implantação de homologação. Nunca use a planilha de produção para testes automatizados.
+O projeto não possui URL de produção embutida: sem essa variável, as chamadas são bloqueadas com `CONFIG_ERROR`.
 
-- **Cadastros**
-  Colunas: `id`, `dataHora`, `contrato`, `nomeProp`, `telProp`, `niverProp`, `nomeInq`, `telInq`, `niverInq`, `inicioContrato`, `fimContrato`, `corretor`, `diaVencimento`
+Antes de publicar:
 
-- **Checklists**
-  Colunas: `id`, `contrato`, `prop_contratoEnviado`, `prop_vistoriaEnviada`, `inq_manualEntregue`, `inq_vistoriaAssinada`, `inq_seguroIncendio`
+```bash
+npm run lint
+npm test
+npm run build
+npm audit --omit=dev --audit-level=high
+```
 
-- **Tarefas**
-  Colunas: `idTarefa`, `dataConclusao`, `contrato`, `tipo`, `usuario`, `referencia`
+## Configuração inicial do Apps Script
 
-## Notas Técnicas
+1. Copie todo o conteúdo de `apps-script.js` para o editor do Google Apps Script.
+2. Nas **Propriedades do script**, crie `SPREADSHEET_ID` com o ID da planilha. O arquivo não contém um ID de produção como fallback.
+3. Execute manualmente `setupSpreadsheet()` e autorize o script. A rotina cria as abas e acrescenta colunas ausentes sem substituir cabeçalhos existentes.
+4. Durante a troca de versão, backend e frontend usam um modo de transição compatível enquanto `APP_AUTH_CONFIGURED` não estiver definido como `true`; isso evita indisponibilidade entre o deploy do Apps Script, a atualização da Vercel e caches antigos da PWA.
+5. Execute uma única vez `setupAuth('admin', 'uma-senha-forte', 'Administrador', 'email@empresa.com')`. A senha deve ter pelo menos dez caracteres e é armazenada somente como hash com salt. Essa execução encerra automaticamente o modo de transição.
+5. Implante como **App da Web**, executando como o proprietário, e copie a URL terminada em `/exec` para `VITE_GAS_URL` na Vercel.
+6. Faça primeiro uma implantação de homologação usando uma cópia da planilha e valide os fluxos abaixo. Só depois publique a mesma versão em produção.
 
-- **Concorrência:** O Apps Script agora usa `LockService` para lidar com requisições concorrentes de forma mais segura.
-- **Armazenamento:** A atualização, inclusão e remoção de dados ocorre através de chamadas HTTP POST com um payload JSON encapsulado num corpo de texto (Content-Type `text/plain`).
-- **Verificações:** A interface checa as respostas HTTP para tratar os erros, com o `fetch` validando `response.ok`.
+Uma nova implantação do Apps Script e um novo deploy da Vercel são partes distintas. Atualizar apenas o GitHub não atualiza o backend.
+
+## Migração e validação
+
+Antes de executar `setupSpreadsheet()` em produção:
+
+1. faça uma cópia completa da planilha;
+2. registre o ID e a versão atual da implantação;
+3. execute a migração na cópia;
+4. confira cabeçalhos e contagem de linhas;
+5. teste criar/editar/arquivar contrato, checklist, cobrança e campanha;
+6. publique em produção e preserve o backup.
+
+As tabelas principais são `Cadastros`, `Checklists`, `Tarefas`, `Condominios`, `Cobrancas`, `Campanhas`, `Campanha_Destinatarios`, `Campanha_Operacoes` e `Operacoes`. Não reordene nem renomeie cabeçalhos manualmente.
+
+## Campanhas e WhatsApp
+
+- O envio continua humano: **Abrir WhatsApp** prepara a mensagem; **Confirmar envio** registra a confirmação.
+- Cada destinatário é deduplicado por telefone normalizado dentro da campanha.
+- Operações de criação, início, edição e confirmação usam UUID persistente para suportar timeout e retentativa.
+- **Desativar** pausa uma campanha sem apagar destinatários ou histórico. **Reativar** restaura a operação com o mesmo estado. Campanhas arquivadas ou canceladas são finais e não podem ser reativadas.
+- Uma campanha inativa não pode ser iniciada nem ter destinatários atualizados.
+
+## Recuperação de falhas
+
+- Erros de timeout não significam necessariamente que a gravação falhou. Retente pelo mesmo botão para reaproveitar a chave idempotente.
+- Conflitos de versão devem ser reconciliados com os dados mais novos antes de sobrescrever.
+- Checklists com `documentos_json` inválido entram em modo protegido e não são salvos. Restaure o JSON a partir do backup antes de continuar.
+- Duplicidades financeiras não são escondidas pela interface; a origem deve ser corrigida na planilha/backend.
+- Ao sair da conta, filas locais e tokens são apagados.
+
+## Segurança operacional
+
+- Não versione `.env.local`, senhas, tokens, IDs privados ou cópias de planilhas.
+- Revogue a implantação anterior se a URL tiver sido exposta.
+- Use contas separadas para homologação e produção quando possível.
+- Faça backup periódico da planilha e teste a restauração.
+- O Google Sheets continua sendo uma limitação para alta concorrência. Para crescimento multiusuário ou dados financeiros críticos, planeje a migração para um banco transacional.

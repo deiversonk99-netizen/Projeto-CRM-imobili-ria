@@ -3,26 +3,29 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import Layout from './components/Layout';
-import Resumo from './pages/Resumo';
-import Cadastros from './pages/Cadastros';
-import Aniversarios from './pages/Aniversarios';
-import Renovacoes from './pages/Renovacoes';
-import Documentos from './pages/Documentos';
-import Boletos from './pages/Boletos';
-import Promocoes from './pages/Promocoes';
 import Login from './pages/Login';
 import { DataProvider, useData } from './context/DataContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/ui/Toast';
 
+const Resumo = lazy(() => import('./pages/Resumo'));
+const Cadastros = lazy(() => import('./pages/Cadastros'));
+const Aniversarios = lazy(() => import('./pages/Aniversarios'));
+const Renovacoes = lazy(() => import('./pages/Renovacoes'));
+const Documentos = lazy(() => import('./pages/Documentos'));
+const Boletos = lazy(() => import('./pages/Boletos'));
+const Promocoes = lazy(() => import('./pages/Promocoes'));
+
+function PageLoading() {
+  return <div className="py-16 text-center text-sm text-muted-foreground">Carregando interface...</div>;
+}
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState('resumo');
-  const { loading: dataLoading, error } = useData();
+  const { loading: dataLoading, error, warnings, cadastros } = useData();
   const { user, loading: authLoading } = useAuth();
-
-  const { cadastros } = useData();
 
   if (authLoading) {
     return (
@@ -33,10 +36,9 @@ function AppContent() {
     );
   }
 
-  // Bypass login for now
-  // if (!user) {
-  //   return <Login />;
-  // }
+  if (!user) {
+    return <Login />;
+  }
 
   if (dataLoading) {
     return (
@@ -71,13 +73,20 @@ function AppContent() {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {activeTab === 'resumo' && <Resumo setTab={setActiveTab} />}
-      {activeTab === 'cadastro' && hasAccess(1) && <Cadastros />}
-      {activeTab === 'aniversarios' && hasAccess(2) && <Aniversarios />}
-      {activeTab === 'renovacoes' && hasAccess(3) && <Renovacoes />}
-      {activeTab === 'documentos' && hasAccess(4) && <Documentos />}
-      {activeTab === 'boletos' && hasAccess(5) && <Boletos />}
-      {activeTab === 'promocoes' && <Promocoes cadastros={cadastros} />}
+      {warnings.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="alert">
+          {warnings.join(' ')}
+        </div>
+      )}
+      <Suspense fallback={<PageLoading />}>
+        {activeTab === 'resumo' && <Resumo setTab={setActiveTab} />}
+        {activeTab === 'cadastro' && hasAccess(1) && <Cadastros />}
+        {activeTab === 'aniversarios' && hasAccess(2) && <Aniversarios />}
+        {activeTab === 'renovacoes' && hasAccess(3) && <Renovacoes />}
+        {activeTab === 'documentos' && hasAccess(4) && <Documentos />}
+        {activeTab === 'boletos' && hasAccess(5) && <Boletos />}
+        {activeTab === 'promocoes' && hasAccess(6) && <Promocoes cadastros={cadastros} />}
+      </Suspense>
       
       {/* Fallback for unauthorized access to a tab */}
       {activeTab !== 'resumo' && (
@@ -86,7 +95,7 @@ function AppContent() {
         (activeTab === 'renovacoes' && !hasAccess(3)) ||
         (activeTab === 'documentos' && !hasAccess(4)) ||
         (activeTab === 'boletos' && !hasAccess(5)) ||
-        false /* Promocoes is open for everyone */
+        (activeTab === 'promocoes' && !hasAccess(6))
       ) && (
         <div className="flex flex-col items-center justify-center py-20 text-center">
           <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">

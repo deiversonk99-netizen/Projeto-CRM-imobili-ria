@@ -124,8 +124,9 @@ describe('Promocoes Domain', () => {
     
     const contatos = agruparContatos(filtrados, vinculos, { ...baseFiltro, perfil: 'Proprietário e inquilino' });
     
-    // João, Maria, Pedro e Empresa (porque Empresa é Prop e Inq no contrato 004) todos têm ambos os perfis nos dados
-    expect(contatos.length).toBe(4);
+    // João, Maria e Pedro têm ambos os perfis e telefone utilizável. A Empresa
+    // permanece fora do público enviável porque seu telefone é inválido.
+    expect(contatos.length).toBe(3);
     
     const maria = contatos.find(c => c.nomes.includes('Maria'));
     expect(maria?.perfis).toContain('Proprietário');

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FiltrosPromocao, ContatoAgrupado } from '../types';
-import { gerarTextoMensagem } from '../domain';
+import { gerarTextoMensagem, placeholdersDesconhecidos } from '../domain';
 import { Check, ChevronRight, MessageSquare, Target, Settings, Play } from 'lucide-react';
 
 interface Props {
@@ -19,10 +19,15 @@ export function CampaignForm({ filtrosAtuais, contatosEncontrados, onIniciar, on
 
   const previewContato = contatosEncontrados[0] || null;
   const previewText = previewContato ? gerarTextoMensagem(mensagem, previewContato, nome || 'Campanha') : 'Nenhum contato para gerar prévia.';
+  const unknownPlaceholders = placeholdersDesconhecidos(mensagem);
 
   const handleNext = () => {
     if (!nome.trim() || !mensagem.trim()) {
       alert('Nome e mensagem são obrigatórios.');
+      return;
+    }
+    if (unknownPlaceholders.length > 0) {
+      alert(`Variáveis desconhecidas: ${unknownPlaceholders.join(', ')}.`);
       return;
     }
     setStep(2);
@@ -88,7 +93,13 @@ export function CampaignForm({ filtrosAtuais, contatosEncontrados, onIniciar, on
                 onChange={e => setMensagem(e.target.value)}
                 className="w-full rounded-xl border border-input bg-background px-4 py-3 text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none min-h-[150px] resize-y"
                 placeholder="Digite a mensagem que será enviada..."
+                maxLength={2000}
               />
+              {unknownPlaceholders.length > 0 && (
+                <p className="mt-2 text-xs font-medium text-red-600" role="alert">
+                  Variáveis desconhecidas: {unknownPlaceholders.join(', ')}
+                </p>
+              )}
             </div>
 
             <div className="bg-muted/40 border border-border p-4 rounded-xl">

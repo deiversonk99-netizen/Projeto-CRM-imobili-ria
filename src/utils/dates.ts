@@ -123,9 +123,4 @@ export function checkCobrancaWarning(vencimentoDateStr: string): 'atrasado' | 'h
   return false;
 }
 
-export const getWhatsappLink = (phone: string | number | undefined | null, text: string) => {
-  const phoneStr = phone != null ? String(phone) : '';
-  const cleanPhone = phoneStr.replace(/\D/g, '');
-  const encodedText = encodeURIComponent(text);
-  return `https://api.whatsapp.com/send?phone=55${cleanPhone}&text=${encodedText}`;
-};
+export { buildWhatsAppLink as getWhatsappLink } from './whatsapp';

@@ -301,6 +301,13 @@ function setupSpreadsheet() {
     if (changed) campaignSheet.getRange(2, activeColumn, activeValues.length, 1).setValues(activeValues);
   }
 
+  const cobrancasSheet = ss.getSheetByName('Cobrancas');
+  const cobrancasHeaders = cobrancasSheet.getRange(1, 1, 1, cobrancasSheet.getLastColumn()).getValues()[0].map(String);
+  const competenciaColumn = cobrancasHeaders.indexOf('competencia') + 1;
+  if (competenciaColumn > 0 && cobrancasSheet.getMaxRows() > 1) {
+    cobrancasSheet.getRange(2, competenciaColumn, cobrancasSheet.getMaxRows() - 1, 1).setNumberFormat('@');
+  }
+
   const triggers = ScriptApp.getProjectTriggers();
   const hasTrigger = triggers.some(trigger => trigger.getHandlerFunction() === 'gerarCobrancasMensais');
   if (!hasTrigger) {
@@ -435,6 +442,7 @@ function getSheetData(sheetName) {
       // Try to parse booleans for Checklists
       if (val === 'TRUE') val = true;
       if (val === 'FALSE') val = false;
+      if (sheetName === 'Cobrancas' && header === 'competencia') val = normalizeCompetencia_(val);
       obj[header] = val;
     });
     return obj;
@@ -928,7 +936,7 @@ function upsertCobranca(cobrancaData) {
     const envioOpId = row[headers.indexOf('envioOperationId')];
     const pagOpId = row[headers.indexOf('pagamentoOperationId')];
     const sameCompetence = String(row[headers.indexOf('cadastroId')]) === String(cobrancaData.cadastroId) &&
-      String(row[headers.indexOf('competencia')]) === String(cobrancaData.competencia);
+      normalizeCompetencia_(row[headers.indexOf('competencia')]) === normalizeCompetencia_(cobrancaData.competencia);
 
     if (sameCompetence && String(id) !== String(cobrancaData.id)) {
       return { error: 'DUPLICATE_COBRANCA', code: 'DUPLICATE_COBRANCA', existingId: id };
@@ -955,6 +963,8 @@ function upsertCobranca(cobrancaData) {
       headers.forEach(header => {
         updateRow.push(cobrancaData[header] !== undefined ? cobrancaData[header] : row[headers.indexOf(header)]);
       });
+      const competenciaColumn = headers.indexOf('competencia') + 1;
+      if (competenciaColumn > 0) sheet.getRange(i + 1, competenciaColumn).setNumberFormat('@');
       sheet.getRange(i + 1, 1, 1, headers.length).setValues([updateRow]);
       return { success: true, updated: true, data: cobrancaData };
     }
@@ -969,8 +979,27 @@ function upsertCobranca(cobrancaData) {
   headers.forEach(header => {
     newRow.push(cobrancaData[header] !== undefined && cobrancaData[header] !== null ? cobrancaData[header] : "");
   });
-  sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([newRow]);
+  const appendRow = sheet.getLastRow() + 1;
+  const competenciaColumn = headers.indexOf('competencia') + 1;
+  if (competenciaColumn > 0) sheet.getRange(appendRow, competenciaColumn).setNumberFormat('@');
+  sheet.getRange(appendRow, 1, 1, headers.length).setValues([newRow]);
   return { success: true, created: true, data: cobrancaData };
+}
+
+function normalizeCompetencia_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM');
+  }
+
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);
+  if (match) return match[1] + '-' + String(Number(match[2])).padStart(2, '0');
+
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM');
+  }
+  return text;
 }
 
 function gerarCobrancasMensais(monthsBack, useLock) {
@@ -999,16 +1028,15 @@ function gerarCobrancasMensais(monthsBack, useLock) {
       const competencia = `${currentYear}-${currentMonth.toString().padStart(2, '0')}`;
 
       const existingCobrancas = new Set(
-        cobrancasData
-          .filter(c => c.competencia === competencia)
-          .map(c => c.cadastroId)
+        cobrancasData.map(c => String(c.cadastroId) + '|' + normalizeCompetencia_(c.competencia))
       );
 
       const newCobrancas = [];
 
       cadastrosData.forEach(cad => {
         if (cad.status !== 'Ativo' || cad.deletedAt) return;
-        if (existingCobrancas.has(cad.id)) return;
+        const cobrancaKey = String(cad.id) + '|' + competencia;
+        if (existingCobrancas.has(cobrancaKey)) return;
         if (!cad.diaVencimento) return;
 
         const diaVenc = parseInt(cad.diaVencimento, 10);
@@ -1047,10 +1075,16 @@ function gerarCobrancasMensais(monthsBack, useLock) {
         const row = [];
         headers.forEach(h => row.push(novaCobranca[h] !== undefined && novaCobranca[h] !== null ? novaCobranca[h] : ""));
         newCobrancas.push(row);
+        existingCobrancas.add(cobrancaKey);
       });
 
       if (newCobrancas.length > 0) {
-        sheetCobrancas.getRange(sheetCobrancas.getLastRow() + 1, 1, newCobrancas.length, headers.length).setValues(newCobrancas);
+        const appendRow = sheetCobrancas.getLastRow() + 1;
+        const competenciaColumn = headers.indexOf('competencia') + 1;
+        if (competenciaColumn > 0) {
+          sheetCobrancas.getRange(appendRow, competenciaColumn, newCobrancas.length, 1).setNumberFormat('@');
+        }
+        sheetCobrancas.getRange(appendRow, 1, newCobrancas.length, headers.length).setValues(newCobrancas);
         // Add to cobrancasData so subsequent loops know it exists if needed
         newCobrancas.forEach(row => {
            let obj = {};
@@ -1065,6 +1099,123 @@ function gerarCobrancasMensais(monthsBack, useLock) {
   } finally {
     if (lock && lock.hasLock()) lock.releaseLock();
   }
+}
+
+function sanearCobrancasDuplicadas(dryRun) {
+  const previewOnly = dryRun !== false;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const sheet = getSpreadsheet_().getSheetByName('Cobrancas');
+    if (!sheet || sheet.getLastRow() <= 1) {
+      return { success: true, dryRun: previewOnly, totalAntes: 0, totalDepois: 0, duplicadas: 0 };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(String);
+    const required = ['id', 'cadastroId', 'competencia', 'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'version', 'createdAt', 'updatedAt'];
+    const missing = required.filter(header => headers.indexOf(header) === -1);
+    if (missing.length > 0) {
+      throw new Error('SCHEMA_OUTDATED: colunas ausentes em Cobrancas: ' + missing.join(', '));
+    }
+
+    const index = {};
+    headers.forEach((header, position) => { index[header] = position; });
+    const groups = new Map();
+
+    data.slice(1).forEach((row, offset) => {
+      if (!row.some(value => value !== '' && value !== null)) return;
+      const key = String(row[index.cadastroId] || '').trim() + '|' + normalizeCompetencia_(row[index.competencia]);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({ row: row.slice(), sourceRow: offset + 2 });
+    });
+
+    function timeValue_(value, fallback) {
+      const timestamp = new Date(value).getTime();
+      return isNaN(timestamp) ? fallback : timestamp;
+    }
+
+    function firstFilled_(entries, header) {
+      const position = index[header];
+      if (position === undefined) return '';
+      const match = entries.find(entry => entry.row[position] !== '' && entry.row[position] !== null);
+      return match ? match.row[position] : '';
+    }
+
+    const cleanedRows = [];
+    let duplicateCount = 0;
+    let groupsWithDuplicates = 0;
+
+    groups.forEach(entries => {
+      entries.sort((a, b) => {
+        const dateDiff = timeValue_(a.row[index.createdAt], Number.MAX_SAFE_INTEGER) - timeValue_(b.row[index.createdAt], Number.MAX_SAFE_INTEGER);
+        return dateDiff || a.sourceRow - b.sourceRow;
+      });
+
+      if (entries.length > 1) {
+        groupsWithDuplicates += 1;
+        duplicateCount += entries.length - 1;
+      }
+
+      const canonical = entries[0].row.slice();
+      canonical[index.competencia] = normalizeCompetencia_(canonical[index.competencia]);
+
+      const paidEntry = entries.find(entry => String(entry.row[index.statusPagamento]).toLowerCase() === 'pago');
+      if (paidEntry) canonical[index.statusPagamento] = 'Pago';
+      else if (entries.some(entry => String(entry.row[index.statusPagamento]).toLowerCase() === 'cancelado')) {
+        canonical[index.statusPagamento] = 'Cancelado';
+      }
+
+      ['pagoEm', 'envioConfirmadoEm', 'envioOperationId', 'pagamentoOperationId'].forEach(header => {
+        if (index[header] !== undefined) canonical[index[header]] = firstFilled_(entries, header);
+      });
+
+      canonical[index.version] = Math.max.apply(null, entries.map(entry => Number(entry.row[index.version]) || 1));
+      const latestUpdated = entries.reduce((latest, entry) => {
+        return timeValue_(entry.row[index.updatedAt], 0) > timeValue_(latest, 0) ? entry.row[index.updatedAt] : latest;
+      }, canonical[index.updatedAt]);
+      canonical[index.updatedAt] = latestUpdated;
+      cleanedRows.push(canonical);
+    });
+
+    const summary = {
+      success: true,
+      dryRun: previewOnly,
+      totalAntes: data.length - 1,
+      totalDepois: cleanedRows.length,
+      duplicadas: duplicateCount,
+      gruposDuplicados: groupsWithDuplicates
+    };
+    console.log(JSON.stringify(summary));
+    if (previewOnly || duplicateCount === 0) return summary;
+
+    if (cleanedRows.length === 0) throw new Error('CLEANUP_ABORTED: nenhuma linha canônica foi produzida.');
+
+    const competenciaColumn = index.competencia + 1;
+    sheet.getRange(2, competenciaColumn, cleanedRows.length, 1).setNumberFormat('@');
+    sheet.getRange(2, 1, cleanedRows.length, headers.length).setValues(cleanedRows);
+
+    const rowsToDelete = sheet.getLastRow() - cleanedRows.length - 1;
+    if (rowsToDelete > 0) sheet.deleteRows(cleanedRows.length + 2, rowsToDelete);
+    SpreadsheetApp.flush();
+
+    const finalRows = sheet.getLastRow() - 1;
+    if (finalRows !== cleanedRows.length) {
+      throw new Error('CLEANUP_VERIFICATION_FAILED: esperado ' + cleanedRows.length + ', encontrado ' + finalRows);
+    }
+    return summary;
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
+  }
+}
+
+function auditarCobrancasDuplicadas() {
+  return sanearCobrancasDuplicadas(true);
+}
+
+function executarSaneamentoCobrancas() {
+  return sanearCobrancasDuplicadas(false);
 }
 
 function gerarCobrancasHistoricas() {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { db } from '../store';
 import { Cadastro, ChecklistDocs, TarefaConcluida, Condominio, Cobranca } from '../types';
 import { useAuth } from './AuthContext';
@@ -28,6 +28,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const hasLoadedRef = useRef(false);
+  const refreshPromiseRef = useRef<ReturnType<DataContextProps['refreshData']> | null>(null);
   const { user } = useAuth();
 
   const addTarefaLocally = (tarefa: TarefaConcluida) => {
@@ -38,60 +40,72 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTarefas((prev) => prev.filter((t) => t.idTarefa !== idTarefa));
   };
 
-  const refreshData = async () => {
-    if (!user) return undefined;
-    try {
-      setLoading(true);
-      setError(null);
-      setWarnings([]);
-      const hasAccess = (interfaceId: number) => user.interfaces.includes(99) || user.interfaces.includes(interfaceId);
-      const results = await Promise.allSettled([
-        db.getCadastros(),
-        hasAccess(4) ? db.getChecklists() : Promise.resolve([] as ChecklistDocs[]),
-        hasAccess(2) ? db.getTarefas() : Promise.resolve([] as TarefaConcluida[]),
-        hasAccess(1) || hasAccess(6) ? db.getCondominios() : Promise.resolve([] as Condominio[]),
-        hasAccess(5) ? db.getCobrancas() : Promise.resolve([] as Cobranca[]),
-      ]);
-      if (results[0].status === 'rejected') throw results[0].reason;
-      const cads = results[0].value as Cadastro[];
-      const checks = results[1].status === 'fulfilled' ? results[1].value as ChecklistDocs[] : [];
-      const tars = results[2].status === 'fulfilled' ? results[2].value as TarefaConcluida[] : [];
-      const conds = results[3].status === 'fulfilled' ? results[3].value as Condominio[] : [];
-      const cobs = results[4].status === 'fulfilled' ? results[4].value as Cobranca[] : [];
-      const partialWarnings = results.slice(1).flatMap((result, index) =>
-        result.status === 'rejected' ? [`Falha ao carregar ${['checklists', 'tarefas', 'condomínios', 'cobranças'][index]}.`] : [],
-      );
+  const refreshData: DataContextProps['refreshData'] = () => {
+    if (!user) return Promise.resolve(undefined);
+    if (refreshPromiseRef.current) return refreshPromiseRef.current;
 
-      const chargeKeys = new Set<string>();
-      const duplicateCharges = cobs.filter(cobranca => {
-        const key = `${cobranca.cadastroId}-${cobranca.competencia}`;
-        if (chargeKeys.has(key)) return true;
-        chargeKeys.add(key);
-        return false;
-      });
-      if (duplicateCharges.length > 0) {
-        partialWarnings.push(`Foram encontradas ${duplicateCharges.length} cobranças duplicadas na base. Nenhum registro foi ocultado.`);
+    const showInitialLoader = !hasLoadedRef.current;
+    const request = (async () => {
+      try {
+        if (showInitialLoader) setLoading(true);
+        setError(null);
+        setWarnings([]);
+        const hasAccess = (interfaceId: number) => user.interfaces.includes(99) || user.interfaces.includes(interfaceId);
+        const results = await Promise.allSettled([
+          db.getCadastros(),
+          hasAccess(4) ? db.getChecklists() : Promise.resolve([] as ChecklistDocs[]),
+          hasAccess(2) ? db.getTarefas() : Promise.resolve([] as TarefaConcluida[]),
+          hasAccess(1) || hasAccess(6) ? db.getCondominios() : Promise.resolve([] as Condominio[]),
+          hasAccess(5) ? db.getCobrancas() : Promise.resolve([] as Cobranca[]),
+        ]);
+        if (results[0].status === 'rejected') throw results[0].reason;
+        const cads = results[0].value as Cadastro[];
+        const checks = results[1].status === 'fulfilled' ? results[1].value as ChecklistDocs[] : [];
+        const tars = results[2].status === 'fulfilled' ? results[2].value as TarefaConcluida[] : [];
+        const conds = results[3].status === 'fulfilled' ? results[3].value as Condominio[] : [];
+        const cobs = results[4].status === 'fulfilled' ? results[4].value as Cobranca[] : [];
+        const partialWarnings = results.slice(1).flatMap((result, index) =>
+          result.status === 'rejected' ? [`Falha ao carregar ${['checklists', 'tarefas', 'condomínios', 'cobranças'][index]}.`] : [],
+        );
+
+        const chargeKeys = new Set<string>();
+        const duplicateCharges = cobs.filter(cobranca => {
+          const key = `${cobranca.cadastroId}-${cobranca.competencia}`;
+          if (chargeKeys.has(key)) return true;
+          chargeKeys.add(key);
+          return false;
+        });
+        if (duplicateCharges.length > 0) {
+          partialWarnings.push(`Foram encontradas ${duplicateCharges.length} cobranças duplicadas na base. Nenhum registro foi ocultado.`);
+        }
+        setWarnings(partialWarnings);
+        setCadastros(cads || []);
+        setChecklists(checks || []);
+        setTarefas(tars || []);
+        setCondominios(conds || []);
+        setCobrancas(cobs || []);
+
+        return { cads, checks, tars, conds, cobs };
+      } catch (err: unknown) {
+        console.error('Error fetching data', err);
+        setError(err instanceof Error ? err.message : 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');
+        return undefined;
+      } finally {
+        hasLoadedRef.current = true;
+        refreshPromiseRef.current = null;
+        if (showInitialLoader) setLoading(false);
       }
-      setWarnings(partialWarnings);
-      setCadastros(cads || []);
-      setChecklists(checks || []);
-      setTarefas(tars || []);
-      setCondominios(conds || []);
-      setCobrancas(cobs || []);
+    })();
 
-      return { cads, checks, tars, conds, cobs };
-    } catch (err: any) {
-      console.error('Error fetching data', err);
-      setError(err.message || 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');
-      return undefined;
-    } finally {
-      setLoading(false);
-    }
+    refreshPromiseRef.current = request;
+    return request;
   };
 
   useEffect(() => {
     if (user) void refreshData();
     else {
+      hasLoadedRef.current = false;
+      refreshPromiseRef.current = null;
       setCadastros([]);
       setChecklists([]);
       setTarefas([]);

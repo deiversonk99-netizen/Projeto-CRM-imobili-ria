@@ -8,6 +8,25 @@ import { parseISO, format, isBefore, startOfDay } from 'date-fns'
 import type { Cobranca } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 
+let financeSyncPromise: Promise<void> | null = null
+let lastFinanceSyncAt = 0
+const FINANCE_SYNC_COOLDOWN_MS = 30_000
+
+function syncCobrancasDeduped() {
+  if (financeSyncPromise) return financeSyncPromise
+  if (Date.now() - lastFinanceSyncAt < FINANCE_SYNC_COOLDOWN_MS) return Promise.resolve()
+
+  financeSyncPromise = db.syncCobrancas()
+    .then(() => {
+      lastFinanceSyncAt = Date.now()
+    })
+    .finally(() => {
+      financeSyncPromise = null
+    })
+
+  return financeSyncPromise
+}
+
 export default function Boletos() {
   const { cadastros, cobrancas, refreshData } = useData()
   const [loading, setLoading] = useState(false)
@@ -41,7 +60,7 @@ export default function Boletos() {
     const syncAndLoad = async () => {
       setLoading(true);
       try {
-        await db.syncCobrancas();
+        await syncCobrancasDeduped();
         if (mounted) {
           await refreshData();
         }

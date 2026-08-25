@@ -935,8 +935,11 @@ function upsertCobranca(cobrancaData) {
     const id = row[headers.indexOf('id')];
     const envioOpId = row[headers.indexOf('envioOperationId')];
     const pagOpId = row[headers.indexOf('pagamentoOperationId')];
-    const sameCompetence = String(row[headers.indexOf('cadastroId')]) === String(cobrancaData.cadastroId) &&
-      normalizeCompetencia_(row[headers.indexOf('competencia')]) === normalizeCompetencia_(cobrancaData.competencia);
+    const sameCompetence = cobrancaKey_(
+      row[headers.indexOf('cadastroId')],
+      row[headers.indexOf('competencia')],
+      row[headers.indexOf('contrato')]
+    ) === cobrancaKey_(cobrancaData.cadastroId, cobrancaData.competencia, cobrancaData.contrato);
 
     if (sameCompetence && String(id) !== String(cobrancaData.id)) {
       return { error: 'DUPLICATE_COBRANCA', code: 'DUPLICATE_COBRANCA', existingId: id };
@@ -1007,8 +1010,11 @@ function normalizeCompetencia_(value) {
   return text;
 }
 
-function cobrancaKey_(cadastroId, competencia) {
-  return String(cadastroId === null || cadastroId === undefined ? '' : cadastroId).trim() + '|' + normalizeCompetencia_(competencia);
+function cobrancaKey_(cadastroId, competencia, contrato) {
+  const normalizedContract = String(contrato === null || contrato === undefined ? '' : contrato).trim().toLowerCase();
+  const normalizedCadastro = String(cadastroId === null || cadastroId === undefined ? '' : cadastroId).trim().toLowerCase();
+  const identity = normalizedContract ? 'contrato:' + normalizedContract : 'cadastro:' + normalizedCadastro;
+  return identity + '|' + normalizeCompetencia_(competencia);
 }
 
 function getCobrancaKeysFromSheet_(sheet) {
@@ -1018,6 +1024,7 @@ function getCobrancaKeysFromSheet_(sheet) {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
   const cadastroIndex = headers.indexOf('cadastroId');
   const competenciaIndex = headers.indexOf('competencia');
+  const contratoIndex = headers.indexOf('contrato');
   if (cadastroIndex === -1 || competenciaIndex === -1) {
     throw new Error('SCHEMA_OUTDATED: cadastroId ou competencia ausente em Cobrancas.');
   }
@@ -1027,10 +1034,11 @@ function getCobrancaKeysFromSheet_(sheet) {
   const displayValues = range.getDisplayValues();
   values.forEach(function(row, index) {
     const cadastroId = row[cadastroIndex] !== '' ? row[cadastroIndex] : displayValues[index][cadastroIndex];
+    const contrato = contratoIndex === -1 ? '' : (row[contratoIndex] !== '' ? row[contratoIndex] : displayValues[index][contratoIndex]);
     const candidates = [row[competenciaIndex], displayValues[index][competenciaIndex]];
     candidates.forEach(function(candidate) {
       const competencia = normalizeCompetencia_(candidate);
-      if (competencia) keys.add(cobrancaKey_(cadastroId, competencia));
+      if (competencia) keys.add(cobrancaKey_(cadastroId, competencia, contrato));
     });
   });
   return keys;
@@ -1067,7 +1075,7 @@ function gerarCobrancasMensais(monthsBack, useLock) {
 
       cadastrosData.forEach(cad => {
         if (cad.status !== 'Ativo' || cad.deletedAt) return;
-        const cobrancaKey = cobrancaKey_(cad.id, competencia);
+        const cobrancaKey = cobrancaKey_(cad.id, competencia, cad.contrato);
         if (existingCobrancas.has(cobrancaKey)) return;
         if (!cad.diaVencimento) return;
 
@@ -1116,8 +1124,9 @@ function gerarCobrancasMensais(monthsBack, useLock) {
         const persistedKeys = getCobrancaKeysFromSheet_(sheetCobrancas);
         const cadastroColumn = headers.indexOf('cadastroId');
         const competenciaColumnIndex = headers.indexOf('competencia');
+        const contratoColumn = headers.indexOf('contrato');
         newCobrancas = newCobrancas.filter(function(row) {
-          const key = cobrancaKey_(row[cadastroColumn], row[competenciaColumnIndex]);
+          const key = cobrancaKey_(row[cadastroColumn], row[competenciaColumnIndex], row[contratoColumn]);
           if (persistedKeys.has(key)) return false;
           persistedKeys.add(key);
           return true;
@@ -1160,7 +1169,7 @@ function sanearCobrancasDuplicadas(dryRun) {
 
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(String);
-    const required = ['id', 'cadastroId', 'competencia', 'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'version', 'createdAt', 'updatedAt'];
+    const required = ['id', 'cadastroId', 'contrato', 'competencia', 'statusPagamento', 'pagoEm', 'envioConfirmadoEm', 'version', 'createdAt', 'updatedAt'];
     const missing = required.filter(header => headers.indexOf(header) === -1);
     if (missing.length > 0) {
       throw new Error('SCHEMA_OUTDATED: colunas ausentes em Cobrancas: ' + missing.join(', '));
@@ -1172,7 +1181,7 @@ function sanearCobrancasDuplicadas(dryRun) {
 
     data.slice(1).forEach((row, offset) => {
       if (!row.some(value => value !== '' && value !== null)) return;
-      const key = String(row[index.cadastroId] || '').trim() + '|' + normalizeCompetencia_(row[index.competencia]);
+      const key = cobrancaKey_(row[index.cadastroId], row[index.competencia], row[index.contrato]);
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push({ row: row.slice(), sourceRow: offset + 2 });
     });

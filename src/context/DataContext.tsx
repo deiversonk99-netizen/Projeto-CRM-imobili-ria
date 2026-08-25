@@ -70,7 +70,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const chargeKeys = new Set<string>();
         const duplicateCharges = cobs.filter(cobranca => {
-          const key = `${cobranca.cadastroId}-${cobranca.competencia}`;
+          const identity = String(cobranca.contrato || cobranca.cadastroId || '').trim().toLowerCase();
+          const key = `${identity}-${cobranca.competencia}`;
           if (chargeKeys.has(key)) return true;
           chargeKeys.add(key);
           return false;

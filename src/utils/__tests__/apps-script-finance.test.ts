@@ -43,5 +43,6 @@ describe('normalização financeira do Apps Script', () => {
   it('reconfere as chaves persistidas imediatamente antes de inserir', () => {
     expect(source).toContain('getCobrancaKeysFromSheet_(sheetCobrancas)');
     expect(source).toContain('if (persistedKeys.has(key)) return false;');
+    expect(source).toContain('cobrancaKey_(cad.id, competencia, cad.contrato)');
   });
 });

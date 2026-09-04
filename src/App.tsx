@@ -5,7 +5,6 @@
 
 import React, { Suspense, lazy, useState } from 'react';
 import Layout from './components/Layout';
-import Login from './pages/Login';
 import { DataProvider, useData } from './context/DataContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from './components/ui/Toast';
@@ -25,19 +24,33 @@ function PageLoading() {
 function AppContent() {
   const [activeTab, setActiveTab] = useState('resumo');
   const { loading: dataLoading, error, warnings, cadastros } = useData();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, error: authError, retryDirectAccess } = useAuth();
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans">
         <div className="w-16 h-16 border-4 border-[#3a5a40] border-t-transparent rounded-full animate-spin"></div>
-        <p className="mt-4 text-[#3a5a40] font-medium text-lg">Verificando acesso...</p>
+        <p className="mt-4 text-[#3a5a40] font-medium text-lg">Inicializando acesso direto...</p>
       </div>
     );
   }
 
   if (!user) {
-    return <Login />;
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center font-sans p-6 text-center">
+        <div className="w-16 h-16 flex items-center justify-center rounded-full bg-amber-100 text-amber-700 mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">Não foi possível abrir o sistema</h2>
+        <p className="text-slate-600 max-w-md">{authError || 'O acesso direto não pôde ser iniciado.'}</p>
+        <button
+          onClick={retryDirectAccess}
+          className="mt-6 px-4 py-2 bg-[#3a5a40] text-white rounded-lg hover:bg-[#2c4532] transition-colors"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
   }
 
   if (dataLoading) {

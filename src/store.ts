@@ -110,6 +110,16 @@ async function loadUser(user: User): Promise<Usuario> {
 }
 
 export const db = {
+  loginAnonymously: async (): Promise<Usuario> => {
+    const { data, error } = await supabase.auth.signInAnonymously();
+    if (error || !data.user || !data.session) {
+      throw new ApiError(
+        'Não foi possível iniciar o acesso direto. Verifique se o acesso anônimo está habilitado no Supabase.',
+        { code: error?.code || 'DIRECT_ACCESS_FAILED' },
+      );
+    }
+    return loadUser(data.user);
+  },
   login: async (login: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email: loginToEmail(login), password });
     if (error || !data.user || !data.session) {

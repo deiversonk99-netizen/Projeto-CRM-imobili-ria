@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Usuario } from '../types';
+import React, { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import localforage from 'localforage';
-import { clearAuthToken, db, setAuthToken } from '../store';
+import { db } from '../store';
+import type { Usuario } from '../types';
 
 interface AuthContextData {
   user: Usuario | null;
@@ -10,11 +10,9 @@ interface AuthContextData {
   loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextData>({} as AuthContextData);
+const AuthContext = createContext<AuthContextData | undefined>(undefined);
 
-function clearLocalSession() {
-  localStorage.removeItem('@app:user');
-  clearAuthToken();
+function clearLocalWorkQueues() {
   Object.keys(localStorage)
     .filter(key => key.startsWith('@campaign:') || key.startsWith('@cobranca:operation:'))
     .forEach(key => localStorage.removeItem(key));
@@ -27,42 +25,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    const restoreSession = async () => {
-      const storedUser = localStorage.getItem('@app:user');
-      const storedToken = localStorage.getItem('@app:auth-token');
-      if (storedUser && storedToken) {
-        try {
-          if (active) setUser(JSON.parse(storedUser) as Usuario);
-          if (active) setLoading(false);
-          return;
-        } catch (e) {
-          console.error(e);
-          localStorage.removeItem('@app:user');
-          clearAuthToken();
-        }
-      }
 
-      try {
-        const response = await db.legacyLogin();
-        if (!active || !response.transitionMode) return;
-        setAuthToken(response.token);
-        setUser(response.user);
-        localStorage.setItem('@app:user', JSON.stringify(response.user));
-      } catch (e) {
-        // A autenticação já está configurada: a tela de login será exibida.
-      } finally {
+    void db.restoreSession()
+      .then(restoredUser => {
+        if (active) setUser(restoredUser);
+      })
+      .catch(error => {
+        console.error('Falha ao restaurar a sessão do Supabase', error);
+        if (active) setUser(null);
+      })
+      .finally(() => {
         if (active) setLoading(false);
-      }
-    };
+      });
 
-    void restoreSession();
-    return () => { active = false; };
+    const unsubscribe = db.onAuthStateChange(authUser => {
+      if (!active) return;
+      if (!authUser) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      // Evita executar outra chamada do cliente dentro do callback interno do Auth.
+      window.setTimeout(() => {
+        void db.userFromAuth(authUser)
+          .then(profile => { if (active) setUser(profile); })
+          .catch(error => {
+            console.error('Sessão sem perfil ativo', error);
+            if (active) setUser(null);
+          })
+          .finally(() => { if (active) setLoading(false); });
+      }, 0);
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
     const handleUnauthorized = () => {
       setUser(null);
-      clearLocalSession();
+      clearLocalWorkQueues();
+      void db.logout();
     };
     window.addEventListener('app:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('app:unauthorized', handleUnauthorized);
@@ -72,12 +77,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const response = await db.login(loginId, senha);
-      setAuthToken(response.token);
       setUser(response.user);
-      localStorage.setItem('@app:user', JSON.stringify(response.user));
       return true;
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
+      setUser(null);
       return false;
     } finally {
       setLoading(false);
@@ -86,7 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     setUser(null);
-    clearLocalSession();
+    clearLocalWorkQueues();
+    void db.logout().catch(error => console.error('Falha ao encerrar a sessão', error));
   };
 
   return (
@@ -98,8 +103,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 }

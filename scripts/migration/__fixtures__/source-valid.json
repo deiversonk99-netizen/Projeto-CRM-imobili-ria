@@ -1,0 +1,54 @@
+{
+  "sourceSpreadsheetId": "fixture",
+  "exportedAt": "2026-09-03T00:00:00.000Z",
+  "sheets": {
+    "Cadastros": [
+      {
+        "_sourceRow": 2,
+        "id": "cad-1",
+        "contrato": "100",
+        "nomeProp": "Pessoa Proprietária",
+        "nomeInq": "Pessoa Inquilina"
+      },
+      {
+        "_sourceRow": 3,
+        "id": "cad-2",
+        "contrato": "100",
+        "nomeProp": "Pessoa Proprietária",
+        "nomeInq": "Pessoa Inquilina"
+      }
+    ],
+    "Checklists": [
+      {
+        "_sourceRow": 2,
+        "id": "cad-1",
+        "contrato": "100",
+        "documentos_json": "[]"
+      }
+    ],
+    "Tarefas": [],
+    "Condominios": [],
+    "Cobrancas": [
+      {
+        "_sourceRow": 2,
+        "id": "charge-1",
+        "cadastroId": "cad-1",
+        "contrato": "100",
+        "competencia": "2026-09"
+      }
+    ],
+    "Campanhas": [],
+    "Campanha_Destinatarios": [
+      {
+        "_sourceRow": 2,
+        "id": "recipient-1",
+        "campanhaId": "legacy-campaign",
+        "perfisJson": "[]",
+        "cadastroIdsJson": "[]",
+        "contratosJson": "[\"100\"]"
+      }
+    ],
+    "Campanha_Operacoes": [],
+    "Operacoes": []
+  }
+}

@@ -1,13 +1,12 @@
 # CRM IMG Imóveis
 
-Aplicação interna para contratos, aniversários, checklists, cobranças, condomínios e campanhas manuais de WhatsApp. O frontend usa React/Vite; o backend é um Web App do Google Apps Script com Google Sheets.
+Aplicação interna para contratos, aniversários, checklists, cobranças, condomínios e campanhas manuais de WhatsApp. O frontend usa React/Vite e o backend oficial é PostgreSQL/Supabase com autenticação, RLS, controle de versão, auditoria e idempotência.
 
 ## Requisitos
 
 - Node.js 22.22.2
 - npm 11
-- uma planilha Google dedicada ao sistema
-- um projeto Google Apps Script implantado como Web App
+- projeto Supabase com as migrações da pasta `supabase/migrations` aplicadas
 
 ## Desenvolvimento local
 
@@ -17,63 +16,66 @@ copy .env.example .env.local
 npm run dev
 ```
 
-Preencha `VITE_GAS_URL` em `.env.local` com a URL `/exec` da implantação de homologação. Nunca use a planilha de produção para testes automatizados.
-O projeto não possui URL de produção embutida: sem essa variável, as chamadas são bloqueadas com `CONFIG_ERROR`.
+Configure em `.env.local` somente a URL pública e a publishable key do Supabase. A service-role key nunca pode usar o prefixo `VITE_` nem ser incluída no frontend.
 
 Antes de publicar:
 
 ```bash
 npm run lint
-npm test
+npx vitest run src
+npm run test:migration
 npm run build
 npm audit --omit=dev --audit-level=high
 ```
 
-## Configuração inicial do Apps Script
+## Banco de dados e segurança
 
-1. Copie todo o conteúdo de `apps-script.js` para o editor do Google Apps Script.
-2. Nas **Propriedades do script**, crie `SPREADSHEET_ID` com o ID da planilha. O arquivo não contém um ID de produção como fallback.
-3. Execute manualmente `setupSpreadsheet()` e autorize o script. A rotina cria as abas e acrescenta colunas ausentes sem substituir cabeçalhos existentes.
-4. Durante a troca de versão, backend e frontend usam um modo de transição compatível enquanto `APP_AUTH_CONFIGURED` não estiver definido como `true`; isso evita indisponibilidade entre o deploy do Apps Script, a atualização da Vercel e caches antigos da PWA.
-5. Execute uma única vez `setupAuth('admin', 'uma-senha-forte', 'Administrador', 'email@empresa.com')`. A senha deve ter pelo menos dez caracteres e é armazenada somente como hash com salt. Essa execução encerra automaticamente o modo de transição.
-5. Implante como **App da Web**, executando como o proprietário, e copie a URL terminada em `/exec` para `VITE_GAS_URL` na Vercel.
-6. Faça primeiro uma implantação de homologação usando uma cópia da planilha e valide os fluxos abaixo. Só depois publique a mesma versão em produção.
+- A autenticação é feita pelo Supabase Auth.
+- Cada usuário possui um perfil ligado a uma organização e uma lista de interfaces permitidas.
+- Todas as tabelas de negócio usam RLS; chamadas anônimas são recusadas.
+- As gravações compostas são funções PostgreSQL transacionais.
+- UUIDs de operação impedem duplicação em timeouts e retentativas.
+- Campos `version` aplicam concorrência otimista e retornam conflitos explícitos.
+- `audit_log` registra alterações de negócio.
 
-Uma nova implantação do Apps Script e um novo deploy da Vercel são partes distintas. Atualizar apenas o GitHub não atualiza o backend.
+O arquivo `apps-script.js` é mantido apenas como histórico/contingência do sistema anterior. O frontend não chama mais o Google Apps Script.
 
-## Migração e validação
+## Migrações
 
-Antes de executar `setupSpreadsheet()` em produção:
+As migrações devem ser aplicadas em ordem:
 
-1. faça uma cópia completa da planilha;
-2. registre o ID e a versão atual da implantação;
-3. execute a migração na cópia;
-4. confira cabeçalhos e contagem de linhas;
-5. teste criar/editar/arquivar contrato, checklist, cobrança e campanha;
-6. publique em produção e preserve o backup.
+1. `202609030001_crm_core.sql`: modelo relacional, RLS, auditoria e funções base.
+2. `202609030002_legacy_import.sql`: staging e importação idempotente do backup.
+3. `202609040001_app_api.sql`: API transacional consumida pelo frontend.
+4. `202609040002_cutover.sql`: ativa o Supabase como backend oficial.
 
-As tabelas principais são `Cadastros`, `Checklists`, `Tarefas`, `Condominios`, `Cobrancas`, `Campanhas`, `Campanha_Destinatarios`, `Campanha_Operacoes` e `Operacoes`. Não reordene nem renomeie cabeçalhos manualmente.
+O importador local exige `SUPABASE_SERVICE_ROLE_KEY` apenas em um arquivo ignorado pelo Git. Para validar a implantação real sem poluir a produção:
+
+```bash
+npm run migration:validate
+npm run migration:import
+npm run migration:provision-admin
+npm run migration:smoke
+```
+
+O smoke test confirma acesso anônimo bloqueado, login/RLS, leituras de produção e todas as mutações em uma organização temporária removida no final.
 
 ## Campanhas e WhatsApp
 
-- O envio continua humano: **Abrir WhatsApp** prepara a mensagem; **Confirmar envio** registra a confirmação.
-- Cada destinatário é deduplicado por telefone normalizado dentro da campanha.
-- Operações de criação, início, edição e confirmação usam UUID persistente para suportar timeout e retentativa.
-- **Desativar** pausa uma campanha sem apagar destinatários ou histórico. **Reativar** restaura a operação com o mesmo estado. Campanhas arquivadas ou canceladas são finais e não podem ser reativadas.
-- Uma campanha inativa não pode ser iniciada nem ter destinatários atualizados.
+- O envio continua humano: **Abrir WhatsApp** prepara a mensagem e **Confirmar envio** registra a confirmação.
+- Destinatários são deduplicados por telefone normalizado dentro da campanha.
+- **Desativar** pausa uma campanha sem apagar destinatários ou histórico; **Reativar** restaura a operação.
+- A máquina de estados impede regressões depois de envio confirmado ou contato ignorado.
 
 ## Recuperação de falhas
 
-- Erros de timeout não significam necessariamente que a gravação falhou. Retente pelo mesmo botão para reaproveitar a chave idempotente.
-- Conflitos de versão devem ser reconciliados com os dados mais novos antes de sobrescrever.
-- Checklists com `documentos_json` inválido entram em modo protegido e não são salvos. Restaure o JSON a partir do backup antes de continuar.
-- Duplicidades financeiras não são escondidas pela interface; a origem deve ser corrigida na planilha/backend.
-- Ao sair da conta, filas locais e tokens são apagados.
+- Em timeout, repita a mesma ação: a fila reaproveita o UUID e o banco devolve o resultado já confirmado.
+- Em conflito de versão, recarregue os dados antes de decidir entre descartar ou sobrescrever.
+- Filas críticas de checklist e campanhas permanecem no IndexedDB/localStorage durante falhas de rede.
+- Ao sair da conta, as filas locais e a sessão são removidas.
 
-## Segurança operacional
+## Segredos
 
-- Não versione `.env.local`, senhas, tokens, IDs privados ou cópias de planilhas.
-- Revogue a implantação anterior se a URL tiver sido exposta.
-- Use contas separadas para homologação e produção quando possível.
-- Faça backup periódico da planilha e teste a restauração.
-- O Google Sheets continua sendo uma limitação para alta concorrência. Para crescimento multiusuário ou dados financeiros críticos, planeje a migração para um banco transacional.
+- Nunca versione `.env.local`, `.env.migration.local`, credenciais, service-role keys ou backups com dados pessoais.
+- A publishable key pode existir no bundle somente porque RLS e autenticação protegem cada operação.
+- Revogue imediatamente qualquer chave secreta que seja exposta fora do ambiente administrativo.

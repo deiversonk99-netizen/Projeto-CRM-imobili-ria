@@ -11,7 +11,13 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
+    env:
+      NPM_CONFIG_FETCH_RETRIES: 5
+      NPM_CONFIG_FETCH_RETRY_FACTOR: 2
+      NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: 20000
+      NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: 120000
+      NPM_CONFIG_FETCH_TIMEOUT: 300000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,4 +29,5 @@ jobs:
       - run: npm test
       - run: npm run test:migration
       - run: npm run build
-      - run: npm audit --omit=dev --audit-level=high
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

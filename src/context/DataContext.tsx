@@ -89,7 +89,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { cads, checks, tars, conds, cobs };
       } catch (err: unknown) {
         console.error('Error fetching data', err);
-        setError(err instanceof Error ? err.message : 'Falha ao carregar os dados. Verifique a conexão ou a permissão do Apps Script.');
+        setError(err instanceof Error ? err.message : 'Falha ao carregar os dados. Verifique a conexão e as permissões do Supabase.');
         return undefined;
       } finally {
         hasLoadedRef.current = true;

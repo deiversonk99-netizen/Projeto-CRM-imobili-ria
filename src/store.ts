@@ -1,8 +1,7 @@
+import type { User } from '@supabase/supabase-js';
 import type { Campanha, CampanhaDestinatario } from './features/promocoes/types';
+import { supabase } from './lib/supabase';
 import type { Cadastro, ChecklistDocs, Condominio, Cobranca, TarefaConcluida, Usuario } from './types';
-
-export const GAS_URL = String(import.meta.env.VITE_GAS_URL || '').trim();
-const AUTH_TOKEN_KEY = '@app:auth-token';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -20,95 +19,6 @@ export class ApiError extends Error {
   }
 }
 
-let authToken = typeof window !== 'undefined' ? localStorage.getItem(AUTH_TOKEN_KEY) || '' : '';
-
-export function setAuthToken(token: string) {
-  authToken = token;
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
-}
-
-export function clearAuthToken() {
-  authToken = '';
-  localStorage.removeItem(AUTH_TOKEN_KEY);
-}
-
-function asRecord(value: unknown): JsonRecord {
-  return value && typeof value === 'object' ? value as JsonRecord : {};
-}
-
-export async function fetchGAS<T = unknown>(payload: JsonRecord, customTimeout = 60000): Promise<T> {
-  if (!GAS_URL || !/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(GAS_URL)) {
-    throw new ApiError('VITE_GAS_URL não está configurada com uma URL /exec válida.', { code: 'CONFIG_ERROR' });
-  }
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), customTimeout);
-  const requestPayload = payload.action === 'login' || payload.action === 'health'
-    ? payload
-    : { ...payload, authToken };
-
-  try {
-    const response = await fetch(GAS_URL, {
-      method: 'POST',
-      credentials: 'omit',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(requestPayload),
-      signal: controller.signal,
-    });
-
-    if (response.status === 404) {
-      const code = response.url.includes('script.googleusercontent.com') ? 'REDIRECT_FAILED' : 'ENDPOINT_NOT_FOUND';
-      throw new ApiError(
-        code === 'REDIRECT_FAILED'
-          ? 'O redirecionamento do Google falhou. A operação ainda pode ter sido processada.'
-          : 'A implantação do Google Apps Script não foi encontrada.',
-        { code },
-      );
-    }
-    if (!response.ok) throw new ApiError(`Falha HTTP ${response.status}.`, { code: `HTTP_${response.status}` });
-
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      throw new ApiError('O servidor não retornou uma resposta JSON.', { code: 'INVALID_RESPONSE' });
-    }
-
-    const data: unknown = await response.json();
-    const record = asRecord(data);
-    if (record.error) {
-      const currentVersion = Number(record.currentVersion ?? record.version);
-      const error = new ApiError(String(record.error), {
-        code: record.code ? String(record.code) : undefined,
-        serverData: record,
-        currentVersion: Number.isFinite(currentVersion) ? currentVersion : undefined,
-      });
-      if (error.code === 'UNAUTHORIZED') window.dispatchEvent(new Event('app:unauthorized'));
-      throw error;
-    }
-    return data as T;
-  } catch (error: unknown) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiError(
-        'A operação excedeu o tempo limite. O servidor ainda pode estar processando a solicitação.',
-        { code: 'TIMEOUT' },
-      );
-    }
-    throw error;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}
-
-export function fetchGET<T>(action: string, params: JsonRecord = {}): Promise<T> {
-  return fetchGAS<T>({ action, ...params });
-}
-
-interface LoginResponse {
-  success: true;
-  token: string;
-  expiresIn: number;
-  user: Usuario;
-  transitionMode?: boolean;
-}
-
 interface MutationResponse {
   success: true;
   status?: string;
@@ -118,56 +28,160 @@ interface MutationResponse {
   dataConclusao?: string;
 }
 
-export const db = {
-  login: (login: string, password: string) =>
-    fetchGAS<LoginResponse>({ action: 'login', credentials: { login, password } }),
-  legacyLogin: () =>
-    fetchGAS<LoginResponse>({ action: 'login', credentials: { login: '__legacy__', password: '' } }),
+interface ProfileRow {
+  user_id: string;
+  full_name: string;
+  interfaces: number[] | null;
+  active: boolean;
+}
 
-  getCadastros: () => fetchGET<Cadastro[]>('getCadastros'),
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as JsonRecord : {};
+}
+
+function normalizeRpcError(error: { message: string; code?: string; details?: string; hint?: string }): ApiError {
+  const rawMessage = [error.message, error.details, error.hint].filter(Boolean).join(' ');
+  if (rawMessage.includes('SUPABASE_TIMEOUT')) {
+    return new ApiError('A operação excedeu o tempo limite. Ela pode ter sido concluída e pode ser repetida com segurança.', { code: 'TIMEOUT' });
+  }
+  const knownCode = [
+    'UNAUTHORIZED', 'FORBIDDEN', 'CHECKLIST_CONFLICT', 'CADASTRO_CONFLICT',
+    'COBRANCA_CONFLICT', 'CAMPAIGN_CONFLICT', 'DESTINATARIO_CONFLICT',
+    'IDEMPOTENCY_KEY_REUSED', 'INVALID_STATUS_TRANSITION', 'INVALID_STATUS',
+    'VALIDATION_ERROR', 'DUPLICATE_CONTRACT', 'NOT_FOUND', 'OPERATION_IN_PROGRESS',
+  ].find(code => rawMessage.includes(code));
+  const message = knownCode === 'UNAUTHORIZED'
+    ? 'Sua sessão expirou. Entre novamente.'
+    : knownCode === 'FORBIDDEN'
+      ? 'Seu usuário não possui permissão para esta operação.'
+      : error.message || 'Falha ao comunicar com o banco de dados.';
+  return new ApiError(message, { code: knownCode || error.code });
+}
+
+function unwrapResponse<T>(data: unknown): T {
+  const record = asRecord(data);
+  if (record.error) {
+    const currentVersion = Number(record.currentVersion ?? record.version);
+    throw new ApiError(String(record.error), {
+      code: record.code ? String(record.code) : undefined,
+      serverData: record,
+      currentVersion: Number.isFinite(currentVersion) ? currentVersion : undefined,
+    });
+  }
+  return data as T;
+}
+
+async function rpc<T>(functionName: string, args: JsonRecord = {}): Promise<T> {
+  const { data, error } = await supabase.rpc(functionName, args);
+  if (error) {
+    const normalized = normalizeRpcError(error);
+    if (normalized.code === 'UNAUTHORIZED' && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('app:unauthorized'));
+    }
+    throw normalized;
+  }
+  return unwrapResponse<T>(data);
+}
+
+function loginToEmail(login: string): string {
+  const normalized = login.trim().toLowerCase();
+  if (normalized.includes('@')) return normalized;
+  const safeLogin = normalized.replace(/[^a-z0-9._-]/g, '');
+  return `${safeLogin}@img-imoveis.local`;
+}
+
+async function loadUser(user: User): Promise<Usuario> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('user_id, full_name, interfaces, active')
+    .eq('user_id', user.id)
+    .single();
+  if (error) throw normalizeRpcError(error);
+  const profile = data as ProfileRow;
+  if (!profile.active) throw new ApiError('Usuário desativado.', { code: 'UNAUTHORIZED' });
+  const email = user.email || '';
+  return {
+    id: profile.user_id,
+    nome: profile.full_name,
+    email,
+    login: email.endsWith('@img-imoveis.local') ? email.slice(0, -'@img-imoveis.local'.length) : email,
+    interfaces: Array.isArray(profile.interfaces) ? profile.interfaces.map(Number) : [],
+  };
+}
+
+export const db = {
+  login: async (login: string, password: string) => {
+    const { data, error } = await supabase.auth.signInWithPassword({ email: loginToEmail(login), password });
+    if (error || !data.user || !data.session) {
+      throw new ApiError('Login ou senha inválidos.', { code: 'INVALID_CREDENTIALS' });
+    }
+    try {
+      return { success: true as const, user: await loadUser(data.user) };
+    } catch (profileError) {
+      await supabase.auth.signOut();
+      throw profileError;
+    }
+  },
+  restoreSession: async (): Promise<Usuario | null> => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw normalizeRpcError(error);
+    return data.session?.user ? loadUser(data.session.user) : null;
+  },
+  userFromAuth: (user: User) => loadUser(user),
+  logout: async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw normalizeRpcError(error);
+  },
+  onAuthStateChange: (callback: (user: User | null) => void) => {
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session?.user ?? null));
+    return () => data.subscription.unsubscribe();
+  },
+
+  getHealth: () => rpc<JsonRecord>('get_app_health'),
+  getCadastros: () => rpc<Cadastro[]>('app_get_cadastros'),
   saveCadastro: (cadastro: Omit<Cadastro, 'id' | 'dataHora'> & {
     id?: string;
     dataHora?: string;
     operationId?: string;
     renewedFromId?: string;
-  }) => fetchGAS<MutationResponse>({ action: 'saveCadastro', data: cadastro }),
+  }) => rpc<MutationResponse>('app_save_cadastro', { p_data: cadastro }),
   updateCadastro: (cadastro: Cadastro & { operationId?: string; expectedVersion?: number }) =>
-    fetchGAS<MutationResponse>({ action: 'updateCadastro', data: cadastro }),
+    rpc<MutationResponse>('app_update_cadastro', { p_data: cadastro }),
   deleteCadastro: (payload: { id: string; operationId: string; expectedVersion: number }) =>
-    fetchGAS<MutationResponse>({ action: 'deleteCadastro', payload }),
+    rpc<MutationResponse>('app_delete_cadastro', { p_payload: payload }),
 
-  getChecklists: () => fetchGET<ChecklistDocs[]>('getChecklists'),
+  getChecklists: () => rpc<ChecklistDocs[]>('app_get_checklists'),
   updateChecklist: (checklist: ChecklistDocs & { operationId?: string; version?: number }) =>
-    fetchGAS<MutationResponse>({ action: 'updateChecklist', data: checklist }),
+    rpc<MutationResponse>('app_update_checklist', { p_data: checklist }),
 
-  getTarefas: () => fetchGET<TarefaConcluida[]>('getTarefas'),
+  getTarefas: () => rpc<TarefaConcluida[]>('app_get_tarefas'),
   saveTarefa: async (tarefa: Omit<TarefaConcluida, 'idTarefa' | 'dataConclusao'> & { operationId: string }) => {
-    const response = await fetchGAS<MutationResponse>({ action: 'saveTarefa', data: tarefa });
+    const response = await rpc<MutationResponse>('app_save_tarefa', { p_data: tarefa });
     return {
       ...tarefa,
       idTarefa: String(response.id),
       dataConclusao: response.dataConclusao || new Date().toISOString(),
     } as TarefaConcluida;
   },
-  deleteTarefa: (idTarefa: string) => fetchGAS<MutationResponse>({ action: 'deleteTarefa', id: idTarefa }),
+  deleteTarefa: (idTarefa: string) => rpc<MutationResponse>('app_delete_tarefa', { p_id: idTarefa }),
 
-  getCondominios: () => fetchGET<Condominio[]>('getCondominios'),
-  getCobrancas: () => fetchGET<Cobranca[]>('getCobrancas'),
-  syncCobrancas: () => fetchGAS<MutationResponse>({ action: 'syncCobrancas' }),
+  getCondominios: () => rpc<Condominio[]>('app_get_condominios'),
+  getCobrancas: () => rpc<Cobranca[]>('app_get_cobrancas'),
+  syncCobrancas: () => rpc<MutationResponse>('app_sync_cobrancas'),
   upsertCondominio: (condominio: Condominio) =>
-    fetchGAS<MutationResponse & { data?: Condominio }>({ action: 'upsertCondominio', data: condominio }),
+    rpc<MutationResponse & { data?: Condominio }>('app_upsert_condominio', { p_data: condominio }),
   upsertCobranca: (cobranca: Cobranca) =>
-    fetchGAS<MutationResponse & { data?: Cobranca }>({ action: 'upsertCobranca', data: cobranca }),
+    rpc<MutationResponse & { data?: Cobranca }>('app_upsert_cobranca', { p_data: cobranca }),
 
-  getCampanhas: () => fetchGET<Campanha[]>('getCampanhas'),
-  saveCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'saveCampanha', payload }),
-  updateCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'updateCampanha', payload }),
-  arquivarCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'arquivarCampanha', payload }),
-  cancelarCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'cancelarCampanha', payload }),
-  setCampanhaAtiva: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'setCampanhaAtiva', payload }),
-  iniciarCampanha: (payload: JsonRecord) => fetchGAS<MutationResponse>({ action: 'iniciarCampanha', payload }, 120000),
+  getCampanhas: () => rpc<Campanha[]>('app_get_campanhas'),
+  saveCampanha: (payload: JsonRecord) => rpc<MutationResponse>('app_save_campanha', { p_payload: payload }),
+  updateCampanha: (payload: JsonRecord) => rpc<MutationResponse>('app_update_campanha', { p_payload: payload }),
+  arquivarCampanha: (payload: JsonRecord) => rpc<MutationResponse>('app_arquivar_campanha', { p_payload: payload }),
+  cancelarCampanha: (payload: JsonRecord) => rpc<MutationResponse>('app_cancelar_campanha', { p_payload: payload }),
+  setCampanhaAtiva: (payload: JsonRecord) => rpc<MutationResponse>('app_set_campanha_ativa', { p_payload: payload }),
+  iniciarCampanha: (payload: JsonRecord) => rpc<MutationResponse>('app_iniciar_campanha', { p_payload: payload }),
   getCampanhaDestinatarios: (campanhaId: string) =>
-    fetchGET<CampanhaDestinatario[]>('getCampanhaDestinatarios', { campanhaId }),
+    rpc<CampanhaDestinatario[]>('app_get_campanha_destinatarios', { p_campanha_id: campanhaId }),
   updateCampanhaDestinatario: (payload: JsonRecord) =>
-    fetchGAS<MutationResponse>({ action: 'updateCampanhaDestinatario', payload }),
+    rpc<MutationResponse>('app_update_campanha_destinatario', { p_payload: payload }),
 };

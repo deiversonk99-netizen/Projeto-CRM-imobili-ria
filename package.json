@@ -10,9 +10,20 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:migration": "node --test scripts/migration/*.test.mjs",
+    "migration:validate": "node scripts/migration/validate-source.mjs",
+    "migration:import": "node scripts/migration/import-source.mjs",
+    "migration:provision-admin": "node scripts/migration/provision-admin.mjs",
+    "migration:smoke": "node scripts/migration/smoke-supabase.mjs",
+    "migration:extract": "python scripts/migration/export-xlsx.py",
+    "supabase:start": "npx supabase start",
+    "supabase:stop": "npx supabase stop",
+    "supabase:reset": "npx supabase db reset",
+    "supabase:test": "npx supabase test db"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.115.0",
     "date-fns": "^4.4.0",
     "localforage": "^1.10.0",
     "lucide-react": "^1.25.0",

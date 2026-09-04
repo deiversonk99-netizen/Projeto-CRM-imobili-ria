@@ -7,3 +7,11 @@ coverage/
 .npm-cache*/
 .env*
 !.env.example
+!.env.migration.example
+supabase/.branches/
+supabase/.temp/
+scripts/migration/source/
+scripts/migration/reports/
+.codex-tmp-py/
+__pycache__/
+*.pyc

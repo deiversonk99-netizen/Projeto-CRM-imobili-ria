@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const corePath = new URL('../../supabase/migrations/202609030001_crm_core.sql', import.meta.url);
 const importPath = new URL('../../supabase/migrations/202609030002_legacy_import.sql', import.meta.url);
+const directAccessPath = new URL('../../supabase/migrations/202609040003_direct_access.sql', import.meta.url);
 
 test('esquema cobre todos os módulos e ativa RLS', async () => {
   const sql = await readFile(corePath, 'utf8');
@@ -30,4 +31,14 @@ test('importação é reexecutável, preserva staging e exige service role', asy
   assert.match(sql, /on conflict/i);
   assert.match(sql, /grant execute[\s\S]+to service_role/i);
   assert.match(sql, /revoke all[\s\S]+from public, anon, authenticated/i);
+});
+
+test('acesso direto usa identidade autenticada sem expor o banco ao papel anon', async () => {
+  const sql = await readFile(directAccessPath, 'utf8');
+  assert.match(sql, /new\.is_anonymous/i);
+  assert.match(sql, /after insert on auth\.users/i);
+  assert.match(sql, /insert into public\.profiles/i);
+  assert.match(sql, /array\[99\]::integer\[\]/i);
+  assert.match(sql, /revoke all[\s\S]+from public, anon, authenticated/i);
+  assert.doesNotMatch(sql, /grant\s+.+\s+to\s+anon/i);
 });

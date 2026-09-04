@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run src",
     "test:watch": "vitest",
     "test:migration": "node --test scripts/migration/*.test.mjs",
     "migration:validate": "node scripts/migration/validate-source.mjs",
@@ -33,6 +33,9 @@
     "uuid": "^14.0.1"
   },
   "devDependencies": {
+    "@emnapi/core": "1.11.3",
+    "@emnapi/runtime": "1.11.3",
+    "@emnapi/wasi-threads": "1.2.3",
     "@tailwindcss/vite": "^4.1.14",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",

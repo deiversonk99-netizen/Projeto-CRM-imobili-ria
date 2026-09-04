@@ -1,6 +1,6 @@
 # CRM IMG Imóveis
 
-Aplicação interna para contratos, aniversários, checklists, cobranças, condomínios e campanhas manuais de WhatsApp. O frontend usa React/Vite e o backend oficial é PostgreSQL/Supabase com autenticação, RLS, controle de versão, auditoria e idempotência.
+Aplicação interna para contratos, aniversários, checklists, cobranças, condomínios e campanhas manuais de WhatsApp. O frontend usa React/Vite e o backend oficial é PostgreSQL/Supabase com sessão automática, RLS, controle de versão, auditoria e idempotência.
 
 ## Requisitos
 
@@ -30,9 +30,10 @@ npm audit --omit=dev --audit-level=high
 
 ## Banco de dados e segurança
 
-- A autenticação é feita pelo Supabase Auth.
-- Cada usuário possui um perfil ligado a uma organização e uma lista de interfaces permitidas.
-- Todas as tabelas de negócio usam RLS; chamadas anônimas são recusadas.
+- O modo atual usa uma sessão anônima autenticada do Supabase Auth e não exibe formulário de login.
+- Cada navegador recebe uma identidade própria, um perfil ligado à organização e permissões registradas no banco.
+- Todas as tabelas de negócio usam RLS; chamadas sem sessão continuam recusadas.
+- Enquanto o acesso direto estiver habilitado, qualquer pessoa que conheça a URL pública do aplicativo poderá entrar com permissão administrativa. Reative o login antes de ampliar a distribuição do endereço.
 - As gravações compostas são funções PostgreSQL transacionais.
 - UUIDs de operação impedem duplicação em timeouts e retentativas.
 - Campos `version` aplicam concorrência otimista e retornam conflitos explícitos.
@@ -48,6 +49,7 @@ As migrações devem ser aplicadas em ordem:
 2. `202609030002_legacy_import.sql`: staging e importação idempotente do backup.
 3. `202609040001_app_api.sql`: API transacional consumida pelo frontend.
 4. `202609040002_cutover.sql`: ativa o Supabase como backend oficial.
+5. `202609040003_direct_access.sql`: provisiona perfis auditáveis para o modo temporário sem tela de login.
 
 O importador local exige `SUPABASE_SERVICE_ROLE_KEY` apenas em um arquivo ignorado pelo Git. Para validar a implantação real sem poluir a produção:
 
@@ -58,7 +60,7 @@ npm run migration:provision-admin
 npm run migration:smoke
 ```
 
-O smoke test confirma acesso anônimo bloqueado, login/RLS, leituras de produção e todas as mutações em uma organização temporária removida no final.
+O smoke test confirma acesso sem sessão bloqueado, RLS, leituras de produção e todas as mutações em uma organização temporária removida no final. O acesso direto deve ser validado separadamente com `signInAnonymously()` depois de habilitar o provedor no painel do Supabase.
 
 ## Campanhas e WhatsApp
 
@@ -72,7 +74,7 @@ O smoke test confirma acesso anônimo bloqueado, login/RLS, leituras de produç�
 - Em timeout, repita a mesma ação: a fila reaproveita o UUID e o banco devolve o resultado já confirmado.
 - Em conflito de versão, recarregue os dados antes de decidir entre descartar ou sobrescrever.
 - Filas críticas de checklist e campanhas permanecem no IndexedDB/localStorage durante falhas de rede.
-- Ao sair da conta, as filas locais e a sessão são removidas.
+- Se uma sessão direta expirar, a interface oferece uma retentativa sem perder as filas locais.
 
 ## Segredos
 
